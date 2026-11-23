@@ -264,6 +264,10 @@ textarea.inp{padding:12px 14px;min-height:120px;line-height:1.45;resize:vertical
 .ar-dia-txt{display:flex;align-items:center;gap:8px;background:#EAF0FE;color:var(--deep);border-radius:10px;padding:8px 12px;font-weight:700;font-size:14.5px}
 .ar-total{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#EAF0FE;color:var(--deep);border:1px solid #C3D3FB;border-radius:16px;padding:14px 18px;font-weight:600}
 .ar-total b{font-size:22px;font-weight:800}.ar-total small{font-size:13px;font-weight:600;opacity:.8}
+/* Lidera: productos propios */
+.pfoto-vacia{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1/1;border-radius:11px;background:var(--green-l);color:var(--deep);font-size:40px;font-weight:800}
+.np-foto{display:flex;align-items:center;justify-content:center;min-height:170px;border:2px dashed var(--line2);border-radius:16px;background:var(--soft);cursor:pointer;overflow:hidden;color:var(--green-d)}
+.np-foto img{width:100%;max-height:300px;object-fit:cover;display:block}
 /* Lidera: marca */
 .marca-login{display:flex;align-items:center;justify-content:center;gap:10px}
 .marca-login img{width:52px;height:52px}
@@ -377,6 +381,7 @@ const GUIAS = {
     'Toca una venta para verla, corregirla o anularla.',
     on('abonos') ? 'Si un cliente dejó un abono, aquí le cobras el saldo cuando pague.' : ''] }),
   productos: own => ({ t: own ? 'Tus productos con su precio y lo que te deja cada uno.' : 'Tus productos con su precio.', p: own ? [
+    'Para agregar uno nuevo, toca «Agregar producto»: nombre, precio y si quieres una foto.',
     'Toca un producto para ver lo que lleva y cuánto te queda.',
     `El color te dice si el precio está bien: verde es buen precio (te queda el ${Math.round(ganMin() * 100)}% o más), amarillo está debajo del mínimo y rojo pierdes plata.`,
     'Si sale amarillo o rojo, toca «Usar» para poner el precio mínimo que te sugerimos.'] : ['Busca por nombre o por el código de la foto.'] }),
@@ -1313,8 +1318,8 @@ const MAP = {
     a: r => ({ id: r.id, nombre: r.nombre, unidad: r.unidad, precio: nn(r.precio), prev: r.precio_anterior == null ? nn(r.precio) : nn(r.precio_anterior), cambio: r.cambio, estimado: !!r.estimado }),
     d: o => ({ id: o.id, nombre: o.nombre, unidad: o.unidad, precio: num(o.precio), precio_anterior: o.prev == null ? null : num(o.prev), cambio: o.cambio || null, estimado: !!o.estimado }) },
   productos: { tabla: 'productos',
-    a: r => ({ id: r.id, code: r.codigo, nombre: r.nombre, precio: nn(r.precio), anexo: !!r.anexo, manoObra: nn(r.mano_obra), estimada: !!r.receta_estimada, tono: r.tono || 't-rose', receta: (r.receta || []).map(x => ({ iid: x.iid, cant: Number(x.cant) || 0 })), foto: r.foto, cats: r.categorias || [], desc: r.descripcion || '', web: r.en_web !== false, orden: r.orden }),
-    d: o => ({ id: o.id, precio: num(o.precio), mano_obra: num(o.manoObra), receta: o.receta.map(x => ({ iid: x.iid, cant: Number(x.cant) || 0 })), receta_estimada: !!o.estimada }) },
+    a: r => ({ id: r.id, code: r.codigo, nombre: r.nombre, precio: nn(r.precio), anexo: !!r.anexo, manoObra: nn(r.mano_obra), estimada: !!r.receta_estimada, tono: r.tono || 't-rose', receta: (r.receta || []).map(x => ({ iid: x.iid, cant: Number(x.cant) || 0 })), foto: r.foto, cats: r.categorias || [], desc: r.descripcion || '', web: r.en_web !== false, orden: r.orden, propio: !!r.propio }),
+    d: o => ({ id: o.id, precio: num(o.precio), mano_obra: num(o.manoObra), receta: o.receta.map(x => ({ iid: x.iid, cant: Number(x.cant) || 0 })), receta_estimada: !!o.estimada, ...(o.propio ? { nombre: o.nombre, foto: o.foto || null, anexo: !!o.anexo, tono: o.tono || 't-rose' } : {}) }) },
   empleados: { tabla: 'empleados',
     a: r => ({ id: r.id, nombre: r.nombre, rol: r.rol, tipo: r.tipo, valorDia: nn(r.valor_dia), valorFijo: nn(r.valor_fijo), frecuencia: r.frecuencia, diaPago: nn(r.dia_pago), base: nn(r.base), valorProducto: nn(r.valor_producto), ultimoPago: fechaApp(r.ultimo_pago) || null, dias: r.dias || [], vales: (r.vales || []), acceso: 'ninguno' }),
     d: o => ({ id: o.id, nombre: o.nombre, rol: o.rol || 'Equipo', tipo: o.tipo, valor_dia: num(o.valorDia), valor_fijo: num(o.valorFijo), frecuencia: o.frecuencia || 'mensual', dia_pago: num(o.diaPago) || 30, base: num(o.base), valor_producto: num(o.valorProducto), ultimo_pago: fechaDB(o.ultimoPago), dias: o.dias || [], vales: o.vales || [] }) },
@@ -1421,8 +1426,8 @@ async function todas(tabla, filtro) {
 }
 function cambiosDe(filas) {
   const g = {};
-  filas.forEach(c => { const k = c.producto_id; if (!g[k]) g[k] = { pid: k, code: c.codigo, nombre: c.nombre, antes: nn(c.antes), ahora: nn(c.ahora), fecha: fechaApp(c.fecha), ids: [c.id] }; else { g[k].ahora = nn(c.ahora); g[k].fecha = fechaApp(c.fecha); g[k].ids.push(c.id); } });
-  return Object.values(g).filter(c => c.antes !== c.ahora);
+  filas.forEach(c => { const k = c.producto_id; if (!g[k]) g[k] = { pid: k, code: c.codigo, nombre: c.nombre, antes: c.antes == null ? null : nn(c.antes), nuevo: c.antes == null, ahora: nn(c.ahora), fecha: fechaApp(c.fecha), ids: [c.id] }; else { g[k].ahora = nn(c.ahora); g[k].fecha = fechaApp(c.fecha); g[k].ids.push(c.id); } });
+  return Object.values(g).filter(c => c.nuevo || c.antes !== c.ahora);
 }
 function aplicarFunciones(filas) {
   S.funcs = {}; (filas || []).forEach(f => { S.funcs[f.clave] = { estado: f.estado, prendida: !!f.prendida }; });
@@ -1437,7 +1442,7 @@ async function cargarDatos() {
   const [n, aj] = await Promise.all([sb.from('negocios').select('*').eq('id', id).single(), sb.from('ajustes').select('*').eq('negocio_id', id).single()]);
   if (n.error) throw n.error; if (aj.error) throw aj.error;
   const [fu, ca, ins, pr, em, cl, ve, co, gf, ga, cp, mi] = await Promise.all([
-    todas('funciones'), todas('campos'), todas('insumos'), todas('productos', q => q.order('orden', { ascending: true, nullsFirst: false })),
+    todas('funciones'), todas('campos'), todas('insumos'), todas('productos', q => q.eq('activo', true).order('orden', { ascending: true, nullsFirst: false })),
     todas('empleados', q => q.eq('activo', true)), todas('clientes'), todas('ventas', q => q.eq('estado', 'activa').order('fecha', { ascending: true })),
     todas('compras'), todas('gastos_fijos'), todas('gastos'), todas('cambios_precio', q => q.eq('pasado_web', false).order('fecha', { ascending: true })), todas('miembros')]);
   const g = aj.data.guia || {}; const datos = aj.data.datos || {};
@@ -2424,14 +2429,18 @@ VIEWS.productos = () => {
   const sr = S.productos.filter(p => sinReceta(p)).length;
   const pend = (S.cambiosPrecio || []).length;
   const bajos = own ? S.productos.filter(bajoMinimo).length : 0;
-  return `<h2 class="v-title">Mis productos</h2><p class="v-sub">${S.productos.length} productos de tu página web, con su foto.${own ? ' Toca uno para ver lo que lleva, cambiar su precio o corregir su receta.' : ''}</p>
+  return `<div class="row" style="flex-wrap:wrap"><h2 class="v-title">Mis productos</h2>${own ? `<button type="button" class="btn btn-p sm" data-act="npNuevo">${ic('add', 18, 2.6)}Agregar producto</button>` : ''}</div>
+  <p class="v-sub">${S.productos.length ? `Tienes ${S.productos.length} producto${S.productos.length === 1 ? '' : 's'}.${own ? ' Toca uno para ver lo que lleva, cambiar su precio o corregir su receta.' : ''}` : 'Aquí van los productos o servicios que vendes, con su precio y lo que llevan.'}</p>
   ${guiaSec('productos')}
   ${own && pend ? `<div class="alert"><div class="ic warn">${ic('refresh')}</div><div class="tx"><b>Cambios para tu página web</b><span class="muted">${pend ? `${pend} cambio${pend > 1 ? 's' : ''} de precio listo${pend > 1 ? 's' : ''} para pasar a ${esc(S.config.web || 'tu página')}` : `Cuando cambies un precio, queda anotado aquí para pasarlo a ${esc(S.config.web || 'tu página web')}.`}</span></div>${pend ? `<button type="button" class="btn btn-l sm" data-act="verCambios">Ver</button>` : ''}</div>` : ''}
   <div class="field" data-tour="psearch"><label for="pq" class="sr">Buscar producto</label><input class="inp" id="pq" data-in="pq" value="${esc(UI.pq)}" placeholder="Busca por nombre o por código, ej: 14" autocomplete="off"></div>
   <div class="scrollx">${catChips(UI.pcat, 'pcat')}${own && bajos ? `<button type="button" class="chip ${UI.pcat === '__bajo' ? 'on' : ''}" data-act="pcat" data-v="__bajo" style="${UI.pcat === '__bajo' ? '' : 'border-color:#E8B4AE;color:#7A1A13'}">Debajo del mínimo (${bajos})</button>` : ''}${own ? `<button type="button" class="chip ${UI.pcat === '__est' ? 'on' : ''}" data-act="pcat" data-v="__est">Por confirmar (${S.productos.filter(p => p.estimada).length})</button>${sr ? `<button type="button" class="chip ${UI.pcat === '__sinrec' ? 'on' : ''}" data-act="pcat" data-v="__sinrec">Sin receta (${sr})</button>` : ''}` : ''}</div>
   <div class="small muted" id="pcount">${L.length} producto${L.length === 1 ? '' : 's'}</div>
-  <div class="ptiles" data-tour="plist" id="pgrid">${pgridHTML(L)}</div>
-  ${own ? '<p class="small muted">Los productos nuevos y los cambios de foto los hace Líderes Locales, para que tu página siempre se vea bien. Tú puedes cambiar precios y recetas.</p>' : ''}`;
+  ${S.productos.length ? `<div class="ptiles" data-tour="plist" id="pgrid">${pgridHTML(L)}</div>` : `<div class="card" style="display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;padding:28px 18px">
+    <span class="thumb t-rose" style="width:64px;height:64px;border-radius:20px">${ic('box', 32)}</span><b style="font-size:18px">Todavía no tienes productos</b>
+    <span class="muted" style="max-width:380px;line-height:1.5">${own ? 'Agrega lo que vendes, uno por uno, con su precio y si quieres con una foto del celular.' : 'La dueña del negocio los agrega aquí.'}</span>
+    ${own ? `<button type="button" class="btn btn-p" data-act="npNuevo">${ic('add', 20, 2.6)}Agregar mi primer producto</button>` : ''}</div>`}
+  ${own && S.productos.length ? '<p class="small muted">Los productos que cargó Líderes Locales vienen de tu página web: a esos les cambias el precio y lo que llevan. Los que agregas tú los puedes cambiar completos.</p>' : ''}`;
 };
 const sinTilde = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 function filtrarProductos(q, cat) {
@@ -2452,12 +2461,13 @@ function catChips(cur, act) {
 function pgridHTML(L) {
   const own = ROL() === 'duena';
   return L.map(p => { const [cls, lab] = semP(p); const m = margen(p); const tag = own ? 'button' : 'div';
-    return `<${tag} ${own ? `type="button" class="ptile" data-act="prodOpen" data-id="${p.id}"` : 'class="ptile"'}>${p.foto ? `<img src="${p.foto}" alt="${esc(p.nombre)}" loading="lazy">` : ''}${p.code ? `<span class="code">${p.code}</span>` : ''}<b style="font-size:14px;line-height:1.25">${esc(p.nombre)}</b><span class="num strong pr">${money(p.precio)}</span>${own ? `<span class="badge ${cls}" style="align-self:flex-start;margin:0 4px;white-space:normal;max-width:calc(100% - 8px);line-height:1.25">${cls === 'neu' ? lab : `${m.plimpio}% · ${lab}`}</span>${(cls === 'warn' || cls === 'bad') && !m.imposible ? `<span class="xs" style="color:#7A1A13;font-weight:700;padding:0 4px">Mínimo ${money(m.minimo)}</span>` : ''}${p.estimada ? '<span class="xs" style="color:var(--warn);font-weight:700;padding:0 4px">Receta estimada</span>' : ''}` : ''}</${tag}>`; }).join('') || '<div class="empty" style="grid-column:1/-1">No encontramos productos con esa búsqueda.</div>';
+    return `<${tag} ${own ? `type="button" class="ptile" data-act="prodOpen" data-id="${p.id}"` : 'class="ptile"'}>${p.foto ? `<img src="${p.foto}" alt="${esc(p.nombre)}" loading="lazy">` : fotoVacia(p)}${p.code ? `<span class="code">${p.code}</span>` : ''}<b style="font-size:14px;line-height:1.25">${esc(p.nombre)}</b><span class="num strong pr">${money(p.precio)}</span>${own ? `<span class="badge ${cls}" style="align-self:flex-start;margin:0 4px;white-space:normal;max-width:calc(100% - 8px);line-height:1.25">${cls === 'neu' ? lab : `${m.plimpio}% · ${lab}`}</span>${(cls === 'warn' || cls === 'bad') && !m.imposible ? `<span class="xs" style="color:#7A1A13;font-weight:700;padding:0 4px">Mínimo ${money(m.minimo)}</span>` : ''}${p.estimada ? '<span class="xs" style="color:var(--warn);font-weight:700;padding:0 4px">Receta estimada</span>' : ''}` : ''}</${tag}>`; }).join('') || '<div class="empty" style="grid-column:1/-1">No encontramos productos con esa búsqueda.</div>';
 }
 function vgridHTML() {
+  if (!S.productos.length) return `<div class="card empty" style="grid-column:1/-1;display:flex;flex-direction:column;align-items:center;gap:10px">Todavía no hay productos para vender.${ROL() === 'duena' ? `<a class="btn btn-p sm" href="#productos">${ic('add', 18, 2.6)}Agregar productos</a>` : ' Pídele a la dueña que los agregue.'}</div>`;
   const L = filtrarProductos(UI.vps, UI.vcat).filter(p => !p.anexo);
   return L.map(p => { const q = D && D.items[p.id] ? D.items[p.id].cant : 0;
-    return `<button type="button" class="ptile ${q ? 'on' : ''}" data-act="vAdd" data-id="${p.id}">${q ? `<span class="qty">${q}</span>` : ''}${p.foto ? `<img src="${p.foto}" alt="${esc(p.nombre)}" loading="lazy">` : ''}${p.code ? `<span class="code">${p.code}</span>` : ''}<b style="font-size:14px;line-height:1.25">${esc(p.nombre)}</b><span class="num small muted pr">${money(p.precio)}</span></button>`; }).join('') || '<div class="empty" style="grid-column:1/-1">No encontramos productos con esa búsqueda.</div>';
+    return `<button type="button" class="ptile ${q ? 'on' : ''}" data-act="vAdd" data-id="${p.id}">${q ? `<span class="qty">${q}</span>` : ''}${p.foto ? `<img src="${p.foto}" alt="${esc(p.nombre)}" loading="lazy">` : fotoVacia(p)}${p.code ? `<span class="code">${p.code}</span>` : ''}<b style="font-size:14px;line-height:1.25">${esc(p.nombre)}</b><span class="num small muted pr">${money(p.precio)}</span></button>`; }).join('') || '<div class="empty" style="grid-column:1/-1">No encontramos productos con esa búsqueda.</div>';
 }
 function registrarCambioPrecio(old, nuevo) {
   if (!old || !old.web || old.precio === nuevo) return false;
@@ -2472,7 +2482,7 @@ function cambiosSheet() {
   const L = (S.cambiosPrecio || []).slice().reverse();
   return `<div class="sheet-h"><h3>Cambios para tu página web</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
   <p class="small muted" style="margin:0;line-height:1.5">Estos son los precios que cambiaste y que todavía hay que pasar a ${esc(S.config.web || 'tu página web')}. Líderes Locales los ve y los actualiza.</p>
-  <div class="card" style="padding:4px 16px">${L.map(c => { const p = prod(c.pid); return `<div class="list-item">${p && p.foto ? `<img src="${p.foto}" alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex:none">` : ''}<span class="col" style="flex:1"><b style="font-size:15px">${esc(c.code)} · ${esc(c.nombre)}</b><span class="small muted">${fLarga(parseD(c.fecha))}</span></span><span class="col" style="align-items:flex-end"><span class="small muted num" style="text-decoration:line-through">${money(c.antes)}</span><b class="num">${money(c.ahora)}</b></span></div>`; }).join('')}</div>
+  <div class="card" style="padding:4px 16px">${L.map(c => { const p = prod(c.pid); return `<div class="list-item">${p && p.foto ? `<img src="${p.foto}" alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex:none">` : ''}<span class="col" style="flex:1"><b style="font-size:15px">${esc(c.code)} · ${esc(c.nombre)}</b><span class="small muted">${fLarga(parseD(c.fecha))}</span></span><span class="col" style="align-items:flex-end">${c.nuevo ? '<span class="badge ok">Producto nuevo</span>' : `<span class="small muted num" style="text-decoration:line-through">${money(c.antes)}</span>`}<b class="num">${money(c.ahora)}</b></span></div>`; }).join('')}</div>
   <button type="button" class="btn btn-l block" data-act="copyCambios">${ic('copy', 18)}Copiar la lista</button>
   ${L.length && (ROL() === 'duena') ? `<button type="button" class="btn btn-l block" data-act="cambiosPasados">${ic('check', 18, 2.6)}Ya los pasé a la página web</button>` : ''}`;
 }
@@ -2483,7 +2493,8 @@ function prodSheet() {
   const m = margen(tmp); const [cls, lab] = semaforo(m.plimpio);
   const sug = 0;
   return `<div class="sheet-h"><h3>${esc(p.nombre)}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
-  ${p.foto ? `<div style="position:relative"><img class="fotoBig" src="${p.foto}" alt="${esc(p.nombre)}">${p.code ? `<span class="code">${p.code}</span>` : ''}</div>` : ''}
+  ${p.foto ? `<div style="position:relative"><img class="fotoBig" src="${p.foto}" alt="${esc(p.nombre)}">${p.code ? `<span class="code">${p.code}</span>` : ''}</div>` : p.code ? `<span class="badge neu" style="align-self:flex-start">Código ${esc(p.code)}</span>` : ''}
+  ${p.recienCreado ? '<div style="background:#EAF0FE;border:1px solid #C3D3FB;border-radius:14px;padding:12px 14px;font-size:14.5px;line-height:1.5"><b>Ya está creado.</b> Ahora agrega lo que lleva y, si alguien cobra por hacerlo, la mano de obra. Así ves cuánto te deja de verdad.</div>' : ''}
   ${p.desc ? `<p class="small muted" style="margin:0;line-height:1.5">${esc(p.desc)}</p>` : ''}
   <div class="field" style="max-width:320px"><label for="pdp">Lo vendes en</label><input class="inp num" id="pdp" data-in="pd" data-k="precio" inputmode="numeric" value="${money(num(p.precio))}">${p.web ? '<span class="xs muted">Al guardar, el precio nuevo queda listo para tu página web.</span>' : ''}</div>
   ${p.estimada ? '<div style="background:#FFF7E3;border:1px solid #F0D99A;border-radius:14px;padding:12px 14px;font-size:14.5px;line-height:1.5"><b>Receta estimada.</b> La armamos mirando la foto y la descripción, con precios de referencia. Corrige lo que no sea así y toca «Guardar» para confirmarla.</div>' : ''}
@@ -2503,7 +2514,8 @@ function prodSheet() {
     <span style="font-size:14.5px;line-height:1.45">Lo mínimo es que te quede el ${Math.round(ganMin() * 100)}% después de insumos, mano de obra y comisión, o sea venderlo en ${money(m.minimo)}. ${m.limpio < 0 ? 'Con un precio más bajo, el producto no alcanza a pagar lo que cuesta hacerlo.' : 'Si lo dejas más barato, cada vez que lo vendas estás trabajando casi gratis.'}</span>
     <div class="row" style="gap:10px;flex-wrap:wrap"><button type="button" class="btn btn-p" style="flex:1.3" data-act="pdUsarMin">Usar ${money(m.minimo)}</button><button type="button" class="btn btn-l" style="flex:1" data-act="pdBajoOk">Guardar así</button></div></div>`
     : `<button type="button" class="btn btn-p block" data-act="pdSave" data-tour="pdSave">${ic('check', 20, 2.6)}Guardar</button>`}
-  <p class="xs muted" style="margin:0">El nombre y la foto los cambia Líderes Locales, para que tu página web siempre se vea bien.</p>`;
+  ${p.propio ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn btn-l sm" style="flex:1" data-act="npEditar">${ic('edit', 16)}Cambiar nombre o foto</button>${p.askQuitar ? `<button type="button" class="btn btn-d sm" data-act="npQuitarOk">Sí, quitarlo</button><button type="button" class="btn btn-l sm" data-act="npQuitarNo">No</button>` : `<button type="button" class="btn btn-d sm" data-act="npQuitar">${ic('trash', 16)}Quitar producto</button>`}</div>`
+    : '<p class="xs muted" style="margin:0">El nombre y la foto de este producto los cambia Líderes Locales, para que tu página web siempre se vea bien.</p>'}`;
 }
 function pdSumHTML(m, cls, lab, sug, anexo, sr) {
   if (sr) return `<div class="line"><span>Te cuesta hacerlo</span><b>—</b></div><div class="small muted" style="padding:8px 0;line-height:1.5">Agrega lo que lleva y aquí verás cuánto te queda y el precio mínimo.</div>`;
@@ -3036,7 +3048,7 @@ const MIS = [
     ] }
 ];
 const misState = m => (S.guia && S.guia.estado[m.id]) || 'pend';
-const misPend = () => MIS.filter(m => misState(m) === 'pend');
+const misPend = () => MIS.filter(m => misState(m) === 'pend' && !(['productos', 'precio'].includes(m.id) && !S.productos.length));
 
 function checkMissions() {
   if (!S.guia) return;
@@ -3360,6 +3372,92 @@ const INV_ACT = {
     const { data, error } = await sb.rpc('inventario_dano', { p_negocio: SES.negocio.id, p_insumo: INVD.iid, p_cant: cant, p_nota: INVD.nota || null });
     if (error) { if (b) b.disabled = false; return toast('No se pudo guardar: ' + errTxt(error)); }
     INV = null; closeSheet(); render(); toast(`Listo. Se perdieron ${money(data || 0)} por daños`);
+  }
+};
+
+/* =========================================================
+   El dueño agrega sus propios productos (con foto opcional)
+   ========================================================= */
+let NP = null;
+async function fotoAchicar(file, max = 720) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; });
+    const k = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    let b = await new Promise(ok => c.toBlob(ok, 'image/webp', 0.82));
+    if (!b || b.type !== 'image/webp') b = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.85));
+    return b;
+  } finally { URL.revokeObjectURL(url); }
+}
+async function fotoSubir(blob) {
+  const ext = blob.type === 'image/webp' ? 'webp' : 'jpg';
+  const path = `${SES.negocio.id}/${Date.now()}-${uid()}.${ext}`;
+  const { error } = await sb.storage.from('fotos').upload(path, blob, { contentType: blob.type, cacheControl: '31536000', upsert: false });
+  if (error) throw error;
+  return sb.storage.from('fotos').getPublicUrl(path).data.publicUrl;
+}
+const fotoVacia = p => `<span class="pfoto-vacia" aria-hidden="true">${esc(String(p.nombre || '?').trim().charAt(0).toUpperCase())}</span>`;
+function npSheet() {
+  const n = NP, edit = !!n.id, foto = n.preview || n.foto;
+  return `<div class="sheet-h"><h3>${edit ? 'Cambiar nombre o foto' : 'Agregar producto'}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
+  ${edit ? '' : '<p class="small muted" style="margin:0;line-height:1.5">Puede ser algo que vendes o un servicio que haces. Después le pones lo que lleva para saber cuánto te deja.</p>'}
+  <label class="np-foto" for="npFoto">${foto ? `<img src="${esc(foto)}" alt="Foto del producto">` : `<span class="col" style="align-items:center;gap:6px">${ic('upload', 30)}<b>Tomar o subir una foto</b><span class="xs muted">Es opcional</span></span>`}
+    <input type="file" id="npFoto" accept="image/*" class="sr"></label>
+  ${foto ? `<div class="row" style="justify-content:center;gap:16px"><label class="linkbtn" for="npFoto" style="cursor:pointer">Cambiar la foto</label><button type="button" class="linkbtn" data-act="npSinFoto">Quitar la foto</button></div>` : ''}
+  <div class="field"><label for="npN">¿Cómo se llama?</label><input class="inp" id="npN" value="${esc(n.nombre)}" placeholder="Ej: Ramo de 12 rosas, Limpieza de pies"></div>
+  ${edit ? '' : `<div class="field" style="max-width:320px"><label for="npP">¿En cuánto lo vendes?</label><input class="inp num" id="npP" data-in="money" inputmode="numeric" value="${n.precio ? money(num(n.precio)) : ''}" placeholder="$0"></div>`}
+  ${on('comision') ? `<div class="row" style="gap:12px;align-items:flex-start"><span class="col" style="flex:1;gap:2px"><b style="font-size:15px">Es un extra</b><span class="small muted">Algo que se vende aparte, como un chocolate o un globo. No paga comisión.</span></span><button type="button" class="toggle ${n.anexo ? 'on' : ''}" data-act="npExtra" aria-pressed="${!!n.anexo}" aria-label="Es un extra"><i></i></button></div>` : ''}
+  <button type="button" class="btn btn-p block" data-act="npGuardar" id="npBtn" style="min-height:56px">${ic('check', 20, 2.6)}${edit ? 'Guardar' : 'Crear producto'}</button>`;
+}
+function npLeer() { if (!NP) return; const g = id => { const e = document.getElementById(id); return e ? e.value : null; }; const a = g('npN'), b = g('npP'); if (a !== null) NP.nombre = a; if (b !== null) NP.precio = b; }
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'npFoto' || !NP) return;
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  npLeer();
+  try { NP.blob = await fotoAchicar(f); if (NP.preview) URL.revokeObjectURL(NP.preview); NP.preview = URL.createObjectURL(NP.blob); NP.quitarFoto = false; drawSheet(); }
+  catch (err) { toast('No se pudo leer esa foto. Prueba con otra.'); }
+});
+const NP_ACT = {
+  npNuevo: () => { if (ROL() !== 'duena') return; NP = { nombre: '', precio: '', anexo: false }; openSheet(npSheet); },
+  npEditar: () => { const p = prod(PD.id); if (!p) return; NP = { id: p.id, nombre: p.nombre, foto: p.foto, anexo: !!p.anexo }; openSheet(npSheet); },
+  npExtra: () => { npLeer(); NP.anexo = !NP.anexo; drawSheet(); },
+  npSinFoto: () => { npLeer(); if (NP.preview) URL.revokeObjectURL(NP.preview); NP.preview = null; NP.blob = null; NP.foto = null; NP.quitarFoto = true; drawSheet(); },
+  npGuardar: async () => {
+    npLeer();
+    const nombre = NP.nombre.trim().replace(/\s+/g, ' ');
+    if (!nombre) return toast('Escribe cómo se llama');
+    const edit = !!NP.id;
+    if (!edit && !num(NP.precio)) return toast('Escribe en cuánto lo vendes');
+    if (S.productos.some(p => p.id !== NP.id && sinTilde(p.nombre) === sinTilde(nombre))) return toast(`Ya tienes un producto que se llama «${nombre}»`);
+    const btn = document.getElementById('npBtn'); if (btn) { btn.disabled = true; btn.textContent = NP.blob ? 'Subiendo la foto…' : 'Guardando…'; }
+    let foto = NP.quitarFoto ? null : (NP.foto || null);
+    if (NP.blob) { try { foto = await fotoSubir(NP.blob); } catch (err) { if (btn) { btn.disabled = false; btn.textContent = edit ? 'Guardar' : 'Crear producto'; } return toast('No se pudo subir la foto: ' + errTxt(err)); } }
+    if (edit) {
+      const p = prod(NP.id); p.nombre = nombre; p.foto = foto; p.anexo = !!NP.anexo; p.tono = p.anexo ? 't-gift' : 't-rose';
+      save(); if (PD && PD.id === p.id) { PD.nombre = p.nombre; PD.foto = p.foto; PD.anexo = p.anexo; }
+      NP = null; closeSheet(); render(); if (PD) openSheet(prodSheet); toast('Listo, quedó cambiado');
+      return;
+    }
+    const { data, error } = await sb.rpc('producto_crear', { p_negocio: SES.negocio.id, p_nombre: nombre, p_precio: num(NP.precio), p_foto: foto, p_anexo: !!NP.anexo });
+    if (error) { if (btn) { btn.disabled = false; btn.textContent = 'Crear producto'; } return toast(errTxt(error)); }
+    const p = MAP.productos.a(data); S.productos.push(p);
+    if (SNAP.productos) SNAP.productos.set(p.id, JSON.stringify(MAP.productos.d(p)));
+    S.cambiosPrecio = S.cambiosPrecio || []; S.cambiosPrecio.push({ pid: p.id, code: p.code, nombre: p.nombre, antes: null, ahora: p.precio, nuevo: true, fecha: isoDT(new Date()) });
+    NP = null; closeSheet(); render();
+    PD = JSON.parse(JSON.stringify(p)); PD.recienCreado = true; openSheet(prodSheet);
+    toast(`Listo, quedó «${p.nombre}» con el código ${p.code}. Ahora pon lo que lleva.`);
+  },
+  npQuitar: () => { PD.askQuitar = true; drawSheet(); },
+  npQuitarNo: () => { PD.askQuitar = false; drawSheet(); },
+  npQuitarOk: async () => {
+    const id = PD.id;
+    const { error } = await sb.rpc('producto_quitar', { p_negocio: SES.negocio.id, p_id: id });
+    if (error) return toast(errTxt(error));
+    S.productos = S.productos.filter(p => p.id !== id); if (SNAP.productos) SNAP.productos.delete(id);
+    S.cambiosPrecio = (S.cambiosPrecio || []).filter(c => c.pid !== id);
+    PD = null; closeSheet(); render(); toast('Producto quitado');
   }
 };
 
@@ -3855,7 +3953,7 @@ const ACT = {
     const clean = { ...(old || {}), ...PD, precio: num(PD.precio), manoObra: PD.anexo ? 0 : num(PD.manoObra), receta: PD.receta.filter(r => r.cant > 0 && insumo(r.iid)) };
     // Si cambió el precio y quedó debajo del mínimo, se avisa antes de guardar
     if (!PD.okBajo && (!old || old.precio !== clean.precio) && bajoMinimo(clean) && !margen(clean).imposible) { PD.askBajo = true; drawSheet(); return; }
-    delete clean.isNew; delete clean.askDel; delete clean.askBajo; delete clean.okBajo;
+    delete clean.isNew; delete clean.askDel; delete clean.askBajo; delete clean.okBajo; delete clean.recienCreado; delete clean.askQuitar;
     const confirmo = !!(old && old.estimada); clean.estimada = false;
     const cambio = registrarCambioPrecio(old, clean.precio);
     const i = S.productos.findIndex(p => p.id === PD.id); if (i >= 0) S.productos[i] = clean; else S.productos.push(clean);
@@ -3944,13 +4042,14 @@ const ACT = {
   pcat: (el, id, v) => { UI.pcat = v; render(); },
   vcat: (el, id, v) => { UI.vcat = v; render(); },
   verCambios: () => openSheet(cambiosSheet),
-  copyCambios: () => copyText((S.cambiosPrecio || []).map(c => `${c.code} ${c.nombre}: ${money(c.antes)} → ${money(c.ahora)}`).join('\n')),
+  copyCambios: () => copyText((S.cambiosPrecio || []).map(c => c.nuevo ? `${c.code} ${c.nombre}: producto nuevo, ${money(c.ahora)}` : `${c.code} ${c.nombre}: ${money(c.antes)} → ${money(c.ahora)}`).join('\n')),
   ...GACT,
   ...EXT_ACT,
   ...SB_ACT,
   ...PANEL_ACT,
   ...PINV_ACT,
   ...AR_ACT,
+  ...NP_ACT,
   ...PCFG_ACT,
   ...INV_ACT,
   ...CLAVE_ACT,
