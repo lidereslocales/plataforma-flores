@@ -110,6 +110,8 @@ h2.v-title{margin:2px 0 0;font-size:26px;font-weight:700;letter-spacing:-.02em}
 .btn-l{background:#fff;color:var(--ink);border:1.5px solid var(--line2)}
 .btn-l:hover{background:var(--soft)}
 .btn-r{background:var(--rose);color:#fff}
+.btn-deep{background:var(--deep);color:#fff}
+.btn-deep:hover{background:#0A2F52}
 .btn-d{background:#fff;color:var(--bad);border:1.5px solid #E8B4AE}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
@@ -255,7 +257,7 @@ textarea.inp{padding:12px 14px;min-height:120px;line-height:1.45;resize:vertical
 .ar-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .ar-dots{display:flex;gap:6px}.ar-dots i{width:34px;height:8px;border-radius:99px;background:var(--line2);display:block}.ar-dots i.on{background:var(--green)}.ar-dots i.ok{background:var(--cyan)}
 .ar-fila{display:flex;flex-direction:column;gap:12px;border-color:var(--line2)}
-.ar-total{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--deep);color:#fff;border-radius:16px;padding:14px 18px;font-weight:600}
+.ar-total{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#EAF0FE;color:var(--deep);border:1px solid #C3D3FB;border-radius:16px;padding:14px 18px;font-weight:600}
 .ar-total b{font-size:22px;font-weight:800}.ar-total small{font-size:13px;font-weight:600;opacity:.8}
 /* Lidera: marca */
 .marca-login{display:flex;align-items:center;justify-content:center;gap:10px}
@@ -3369,12 +3371,12 @@ const arUnidadUI = u => { const k = Object.keys({ unidades: 1, tallos: 1, paquet
 const arFrecTxt = f => ({ mensual: 'al mes', semanal: 'a la semana', quincenal: 'cada 15 días', anual: 'al año' }[f] || 'al mes');
 const arPasos = () => on('inventario') ? 2 : 1;
 const arPendiente = () => !S.config.arranque && (ROL() === 'duena');
-function arNuevo() { AR = { paso: 1, fijos: [], inv: [{ nombre: '', cant: '', unidad: 'unidades', costo: '', modo: 'uno' }] }; if (!S.gastosFijos.length) AR.fijos.push({ nombre: '', valor: '', frecuencia: 'mensual' }); }
+function arNuevo() { AR = { paso: 1, f: { nombre: '', valor: '', frecuencia: 'mensual' }, inv: [{ nombre: '', cant: '', unidad: 'unidades', costo: '', modo: 'uno' }] }; }
 // Guarda lo escrito antes de volver a dibujar
 function arLeer() {
   if (!AR) return;
   const g = id => { const el = document.getElementById(id); return el ? el.value : null; };
-  AR.fijos.forEach((f, i) => { const n = g('arFn' + i), v = g('arFv' + i); if (n !== null) f.nombre = n; if (v !== null) f.valor = v; });
+  const n = g('arFn'), v = g('arFv'); if (n !== null) AR.f.nombre = n; if (v !== null) AR.f.valor = v;
   AR.inv.forEach((x, i) => { const n = g('arIn' + i), c = g('arIc' + i), u = g('arIu' + i), k = g('arIk' + i); if (n !== null) x.nombre = n; if (c !== null) x.cant = c; if (u !== null) x.unidad = u; if (k !== null) x.costo = k; });
 }
 const arCostoUnit = x => { const c = numC(x.cant), k = num(x.costo); if (!k) return 0; return x.modo === 'todo' ? (c ? Math.round(k / c) : 0) : k; };
@@ -3384,26 +3386,28 @@ function arBarra() {
     <div class="ar-dots">${Array.from({ length: tot }, (_, i) => `<i class="${i + 1 < p ? 'ok' : i + 1 === p ? 'on' : ''}"></i>`).join('')}</div></div>`;
 }
 function arFijosHTML() {
-  const yaEst = S.gastosFijos, nom = first(S.config.duena || SES.nombre || '');
-  const totMes = yaEst.reduce((s, g) => s + mensualEq(g), 0) + AR.fijos.reduce((s, f) => s + mensualEq({ valor: num(f.valor), frecuencia: f.frecuencia }), 0);
-  const usados = new Set([...yaEst.map(g => sinTilde(g.nombre)), ...AR.fijos.map(f => sinTilde(f.nombre))]);
+  const L = S.gastosFijos, f = AR.f, nom = first(S.config.duena || SES.nombre || '');
+  const totMes = L.reduce((t, g) => t + mensualEq(g), 0);
+  const usados = new Set(L.map(g => sinTilde(g.nombre)));
   const sug = AR_FIJOS.filter(n => !usados.has(sinTilde(n)));
   return `${arBarra()}
   <div class="col" style="gap:6px"><h2 class="v-title">${nom ? `Hola, ${esc(nom)}. ` : ''}Empecemos por tus gastos fijos</h2>
-  <p class="v-sub" style="margin:0">Vamos a dejar tu negocio listo en ${arPasos() === 2 ? 'dos pasos cortos' : 'un paso corto'}. Los <b>gastos fijos</b> son los que pagas siempre, vendas o no, como el arriendo o la luz, ya sea cada mes o cada semana. Con ellos sabes cuánto necesitas vender para cubrir el mes.</p></div>
-  ${yaEst.length ? `<div class="card" style="padding:6px 16px"><div class="xs strong muted" style="padding:8px 0 2px">YA ANOTADOS</div>${yaEst.map(g => `<div class="list-item"><span class="col" style="flex:1;gap:2px"><b style="font-size:15.5px">${esc(g.nombre)}</b><span class="small muted num">${money(g.valor)} ${arFrecTxt(g.frecuencia)}</span></span><button type="button" class="btn btn-l xs" data-act="arFijoQuitar" data-id="${g.id}" aria-label="Quitar ${esc(g.nombre)}">${ic('trash', 16)}</button></div>`).join('')}</div>` : ''}
-  ${AR.fijos.map((f, i) => `<div class="card ar-fila">
-    <div class="row"><b style="font-size:15px">Gasto ${yaEst.length + i + 1}</b><button type="button" class="x" style="width:38px;height:38px" data-act="arFijoDel" data-id="${i}" aria-label="Quitar este gasto">${ic('x', 18)}</button></div>
-    <div class="fgrid"><div class="field"><label for="arFn${i}">¿Qué es?</label><input class="inp" id="arFn${i}" value="${esc(f.nombre)}" placeholder="Ej: Arriendo"></div>
-    <div class="field"><label for="arFv${i}">¿Cuánto pagas?</label><input class="inp num" id="arFv${i}" data-in="money" inputmode="numeric" value="${f.valor ? money(num(f.valor)) : ''}" placeholder="$0"></div></div>
-    <div class="field"><span class="small strong" style="color:var(--ink2)">¿Cada cuánto?</span><div class="chips">${AR_FREC.map(([k, l]) => `<button type="button" class="chip xs-chip ${f.frecuencia === k ? 'on' : ''}" data-act="arFrec" data-id="${i}" data-v="${k}" aria-pressed="${f.frecuencia === k}">${l}</button>`).join('')}</div></div>
-  </div>`).join('')}
-  <div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <span class="small strong">Toca para agregar los que tengas</span>
-    <div class="chips">${sug.map(n => `<button type="button" class="chip" data-act="arFijoAdd" data-v="${esc(n)}">+ ${esc(n)}</button>`).join('')}<button type="button" class="chip" data-act="arFijoAdd" data-v="">+ Otro</button></div>
+  <p class="v-sub" style="margin:0">Vamos a dejar tu negocio listo en ${arPasos() === 2 ? 'dos pasos cortos' : 'un paso corto'}. Los <b>gastos fijos</b> son los que pagas siempre, vendas o no, como el arriendo o la luz. Agrégalos uno por uno y, cuando estén todos, toca «Ya los puse todos».</p></div>
+  <div class="card ar-fila" id="arForm">
+    <b style="font-size:16px">${L.length ? 'Agregar otro gasto fijo' : 'Agrega tu primer gasto fijo'}</b>
+    <div class="field"><span class="small strong" style="color:var(--ink2)">Toca uno o escribe el tuyo</span><div class="chips">${sug.map(n => `<button type="button" class="chip xs-chip ${sinTilde(f.nombre) === sinTilde(n) ? 'on' : ''}" data-act="arFijoAdd" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div></div>
+    <div class="fgrid"><div class="field"><label for="arFn">¿Qué es?</label><input class="inp" id="arFn" value="${esc(f.nombre)}" placeholder="Ej: Arriendo" enterkeyhint="next"></div>
+    <div class="field"><label for="arFv">¿Cuánto pagas?</label><input class="inp num" id="arFv" data-in="money" inputmode="numeric" value="${f.valor ? money(num(f.valor)) : ''}" placeholder="$0" enterkeyhint="done"></div></div>
+    <div class="field"><span class="small strong" style="color:var(--ink2)">¿Cada cuánto lo pagas?</span><div class="chips">${AR_FREC.map(([k, l]) => `<button type="button" class="chip xs-chip ${f.frecuencia === k ? 'on' : ''}" data-act="arFrec" data-v="${k}" aria-pressed="${f.frecuencia === k}">${l}</button>`).join('')}</div></div>
+    <button type="button" class="btn btn-p block" data-act="arFijoAgregar">${ic('add', 20, 2.6)}Agregar a mi lista</button>
+  </div>
+  <div class="card" style="padding:6px 16px">
+    <div class="row" style="padding:10px 0 4px"><b style="font-size:16px">Mi lista de gastos fijos</b><span class="badge neu">${L.length}</span></div>
+    ${L.length ? L.map(g => `<div class="list-item"><span class="col" style="flex:1;gap:2px"><b style="font-size:15.5px">${esc(g.nombre)}</b><span class="small muted num">${money(g.valor)} ${arFrecTxt(g.frecuencia)}</span></span><button type="button" class="btn btn-l xs" data-act="arFijoQuitar" data-id="${g.id}" aria-label="Quitar ${esc(g.nombre)}">${ic('trash', 16)}Quitar</button></div>`).join('')
+      : '<div class="empty" style="padding:14px 6px">Todavía no has agregado ninguno. Llena el cuadro de arriba y toca «Agregar a mi lista».</div>'}
   </div>
   <div class="ar-total"><span>Tus gastos fijos suman</span><b class="num">${money(Math.round(totMes))} <small>al mes</small></b></div>
-  <button type="button" class="btn btn-p block" data-act="arFijosOk" id="arBtn" style="min-height:58px;font-size:18px">${arPasos() === 2 ? 'Guardar y seguir' : 'Guardar y terminar'}${ic('chevR', 20, 2.4)}</button>
+  <button type="button" class="btn btn-deep block" data-act="arFijosOk" id="arBtn" style="min-height:58px;font-size:18px">${L.length ? `Ya los puse todos, ${arPasos() === 2 ? 'seguir' : 'terminar'}` : 'Seguir'}${ic('chevR', 20, 2.4)}</button>
   <div class="row" style="justify-content:center;gap:16px;flex-wrap:wrap"><button type="button" class="linkbtn" data-act="arSinFijos">No tengo gastos fijos</button><button type="button" class="linkbtn" data-act="arDespues">Lo hago después</button></div>`;
 }
 function arInvHTML() {
@@ -3449,24 +3453,29 @@ VIEWS.empezar = () => {
 };
 function arTerminar() { S.config.arranque = iso(TODAY()); S.welcome = false; save(); }
 const AR_ACT = {
-  arFijoAdd: (el, id, v) => { arLeer(); AR.fijos.push({ nombre: v || '', valor: '', frecuencia: 'mensual' }); render(); const k = AR.fijos.length - 1; const inp = document.getElementById(v ? 'arFv' + k : 'arFn' + k); if (inp) { inp.focus(); inp.scrollIntoView({ block: 'center' }); } },
-  arFijoDel: (el, id) => { arLeer(); AR.fijos.splice(Number(id), 1); render(); },
-  arFijoQuitar: (el, id) => { S.gastosFijos = S.gastosFijos.filter(g => g.id !== id); save(); arLeer(); render(); },
-  arFrec: (el, id, v) => { arLeer(); AR.fijos[Number(id)].frecuencia = v; render(); },
+  arFijoAdd: (el, id, v) => { arLeer(); AR.f.nombre = v || ''; render(); const inp = document.getElementById('arFv'); if (inp) { inp.focus(); inp.scrollIntoView({ block: 'center' }); } },
+  arFijoQuitar: (el, id) => { arLeer(); const g = S.gastosFijos.find(x => x.id === id); S.gastosFijos = S.gastosFijos.filter(x => x.id !== id); save(); render(); if (g) toast(`Quitaste «${g.nombre}»`); },
+  arFrec: (el, id, v) => { arLeer(); AR.f.frecuencia = v; render(); },
+  arFijoAgregar: () => {
+    arLeer();
+    const n = AR.f.nombre.trim().replace(/\s+/g, ' '), v = num(AR.f.valor);
+    if (!n) { toast('Escribe qué es, o toca uno de la lista'); const e = document.getElementById('arFn'); if (e) e.focus(); return false; }
+    if (!v) { toast(`Escribe cuánto pagas de «${n}»`); const e = document.getElementById('arFv'); if (e) e.focus(); return false; }
+    S.gastosFijos.push({ id: uid(), nombre: n.charAt(0).toUpperCase() + n.slice(1), valor: v, frecuencia: AR.f.frecuencia, dia: 1, mes: 1, pagos: [] });
+    save(); AR.f = { nombre: '', valor: '', frecuencia: 'mensual' }; render();
+    const f = document.getElementById('arForm'); if (f) f.scrollIntoView({ block: 'start' });
+    toast(`Agregaste «${n}». Si tienes otro, agrégalo igual`);
+    return true;
+  },
   arFijosOk: () => {
     arLeer();
-    const filas = AR.fijos.filter(f => f.nombre.trim() || num(f.valor));
-    const mala = filas.find(f => !f.nombre.trim() || !num(f.valor));
-    if (mala) return toast(mala.nombre.trim() ? `Falta cuánto pagas de «${mala.nombre.trim()}»` : 'Escribe qué es cada gasto');
-    filas.forEach(f => S.gastosFijos.push({ id: uid(), nombre: f.nombre.trim(), valor: num(f.valor), frecuencia: f.frecuencia, dia: 1, mes: 1, pagos: [] }));
-    if (filas.length) save();
-    AR.fijos = [];
+    // Si dejó uno escrito sin agregar, se agrega solo
+    if (AR.f.nombre.trim() || num(AR.f.valor)) { if (!ACT.arFijoAgregar()) return; }
     if (!S.gastosFijos.length) return toast('Agrega al menos uno, o toca «No tengo gastos fijos»');
     AR.paso = 2; if (!on('inventario')) arTerminar();
     render(); window.scrollTo(0, 0);
-    toast(filas.length ? `Listo, quedaron ${S.gastosFijos.length} gasto${S.gastosFijos.length === 1 ? '' : 's'} fijo${S.gastosFijos.length === 1 ? '' : 's'}` : 'Listo');
   },
-  arSinFijos: () => { arLeer(); AR.fijos = []; AR.paso = 2; if (!on('inventario')) arTerminar(); render(); window.scrollTo(0, 0); },
+  arSinFijos: () => { arLeer(); AR.f = { nombre: '', valor: '', frecuencia: 'mensual' }; AR.paso = 2; if (!on('inventario')) arTerminar(); render(); window.scrollTo(0, 0); },
   arDespues: () => { S.welcome = false; save(); AR = null; go('inicio'); toast('Cuando quieras, lo terminas desde el inicio'); },
   arAtras: () => { arLeer(); AR.paso = 1; render(); window.scrollTo(0, 0); },
   arInvAdd: () => { arLeer(); AR.inv.push({ nombre: '', cant: '', unidad: 'unidades', costo: '', modo: 'uno' }); render(); const inp = document.getElementById('arIn' + (AR.inv.length - 1)); if (inp) { inp.focus(); inp.scrollIntoView({ block: 'center' }); } },
@@ -3595,6 +3604,8 @@ function invitacionHTML(msg) {
     <p class="xs muted" style="margin:0;text-align:center">Anota tu usuario y tu clave en un lugar seguro.</p>
   </form>`;
 }
+// En los gastos fijos, Enter agrega a la lista
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.target.id === 'arFn' || e.target.id === 'arFv')) { e.preventDefault(); if (e.target.id === 'arFn') { const v = document.getElementById('arFv'); if (v) v.focus(); } else ACT.arFijoAgregar(); } });
 // Mientras escribe su nombre, el usuario sugerido sale de su primer nombre
 document.addEventListener('input', e => {
   if (e.target.id !== 'ivN' || !INVU || INVU.manual || !INVDATA) return;
