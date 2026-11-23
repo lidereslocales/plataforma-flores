@@ -257,6 +257,11 @@ textarea.inp{padding:12px 14px;min-height:120px;line-height:1.45;resize:vertical
 .ar-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .ar-dots{display:flex;gap:6px}.ar-dots i{width:34px;height:8px;border-radius:99px;background:var(--line2);display:block}.ar-dots i.on{background:var(--green)}.ar-dots i.ok{background:var(--cyan)}
 .ar-fila{display:flex;flex-direction:column;gap:12px;border-color:var(--line2)}
+.ar-dia{display:flex;flex-direction:column;gap:8px;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:12px}
+.ar-dia .cal{max-width:420px}
+.ar-dia .cal button{min-height:42px}
+.ar-meses{grid-template-columns:repeat(6,minmax(0,1fr))!important}
+.ar-dia-txt{display:flex;align-items:center;gap:8px;background:#EAF0FE;color:var(--deep);border-radius:10px;padding:8px 12px;font-weight:700;font-size:14.5px}
 .ar-total{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#EAF0FE;color:var(--deep);border:1px solid #C3D3FB;border-radius:16px;padding:14px 18px;font-weight:600}
 .ar-total b{font-size:22px;font-weight:800}.ar-total small{font-size:13px;font-weight:600;opacity:.8}
 /* Lidera: marca */
@@ -3371,7 +3376,7 @@ const arUnidadUI = u => { const k = Object.keys({ unidades: 1, tallos: 1, paquet
 const arFrecTxt = f => ({ mensual: 'al mes', semanal: 'a la semana', quincenal: 'cada 15 días', anual: 'al año' }[f] || 'al mes');
 const arPasos = () => on('inventario') ? 2 : 1;
 const arPendiente = () => !S.config.arranque && (ROL() === 'duena');
-function arNuevo() { AR = { paso: 1, f: { nombre: '', valor: '', frecuencia: 'mensual' }, inv: [{ nombre: '', cant: '', unidad: 'unidades', costo: '', modo: 'uno' }] }; }
+function arNuevo() { AR = { paso: 1, f: { nombre: '', valor: '', frecuencia: 'mensual', dia: null, mes: null }, inv: [{ nombre: '', cant: '', unidad: 'unidades', costo: '', modo: 'uno' }] }; }
 // Guarda lo escrito antes de volver a dibujar
 function arLeer() {
   if (!AR) return;
@@ -3384,6 +3389,31 @@ function arBarra() {
   const tot = arPasos(), p = Math.min(AR.paso, tot);
   return `<div class="ar-top"><span class="xs strong" style="color:var(--green-d);letter-spacing:.06em">PASO ${p} DE ${tot}</span>
     <div class="ar-dots">${Array.from({ length: tot }, (_, i) => `<i class="${i + 1 < p ? 'ok' : i + 1 === p ? 'on' : ''}"></i>`).join('')}</div></div>`;
+}
+const AR_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const AR_MESC = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+// Qué día se paga, según cada cuánto: un calendario del mes, los días de la semana o el mes del año
+function arDiaTxt(f) {
+  if (!f.dia) return '';
+  if (f.frecuencia === 'semanal') { const w = AR_SEM[f.dia - 1].toLowerCase(); return `Se paga todos los ${w.endsWith('s') ? w : w + 's'}`; }
+  if (f.frecuencia === 'quincenal') return `Se paga el ${f.dia} y el ${Math.min(f.dia + 15, 30)} de cada mes`;
+  if (f.frecuencia === 'anual') return f.mes ? `Se paga el ${f.dia} de ${MES[f.mes - 1]} de cada año` : '';
+  return `Se paga el ${f.dia} de cada mes${f.dia > 28 ? ' (en los meses más cortos, el último día)' : ''}`;
+}
+function arDiaHTML(f) {
+  const d = (n, extra = '') => `<button type="button" class="${f.dia === n ? 'on' : ''}" data-act="arDia" data-v="${n}" aria-pressed="${f.dia === n}" ${extra}>${n}</button>`;
+  let cuerpo;
+  if (f.frecuencia === 'semanal') cuerpo = `<span class="small strong" style="color:var(--ink2)">¿Qué día de la semana?</span>
+    <div class="chips">${AR_SEM.map((x, i) => `<button type="button" class="chip xs-chip ${f.dia === i + 1 ? 'on' : ''}" data-act="arDia" data-v="${i + 1}" aria-pressed="${f.dia === i + 1}">${x}</button>`).join('')}</div>`;
+  else if (f.frecuencia === 'quincenal') cuerpo = `<span class="small strong" style="color:var(--ink2)">¿Qué día de la primera quincena lo pagas?</span>
+    <span class="xs muted" style="margin-top:-4px">El segundo pago es 15 días después.</span>
+    <div class="cal">${Array.from({ length: 15 }, (_, i) => d(i + 1)).join('')}</div>`;
+  else cuerpo = `${f.frecuencia === 'anual' ? `<span class="small strong" style="color:var(--ink2)">¿En qué mes?</span>
+    <div class="cal ar-meses">${AR_MESC.map((m, i) => `<button type="button" class="${f.mes === i + 1 ? 'on' : ''}" data-act="arMes" data-v="${i + 1}" aria-pressed="${f.mes === i + 1}" aria-label="${MES[i]}">${m}</button>`).join('')}</div>` : ''}
+    <span class="small strong" style="color:var(--ink2)">${f.frecuencia === 'anual' ? '¿Qué día?' : '¿Qué día del mes lo pagas?'}</span>
+    <div class="cal">${Array.from({ length: 31 }, (_, i) => d(i + 1)).join('')}</div>`;
+  const t = arDiaTxt(f);
+  return `<div class="ar-dia">${cuerpo}${t ? `<div class="ar-dia-txt">${ic('cal', 18)}${t}</div>` : '<span class="xs muted">Toca el día. Así te avisamos cuando se acerque el pago.</span>'}</div>`;
 }
 function arFijosHTML() {
   const L = S.gastosFijos, f = AR.f, nom = first(S.config.duena || SES.nombre || '');
@@ -3399,11 +3429,12 @@ function arFijosHTML() {
     <div class="fgrid"><div class="field"><label for="arFn">¿Qué es?</label><input class="inp" id="arFn" value="${esc(f.nombre)}" placeholder="Ej: Arriendo" enterkeyhint="next"></div>
     <div class="field"><label for="arFv">¿Cuánto pagas?</label><input class="inp num" id="arFv" data-in="money" inputmode="numeric" value="${f.valor ? money(num(f.valor)) : ''}" placeholder="$0" enterkeyhint="done"></div></div>
     <div class="field"><span class="small strong" style="color:var(--ink2)">¿Cada cuánto lo pagas?</span><div class="chips">${AR_FREC.map(([k, l]) => `<button type="button" class="chip xs-chip ${f.frecuencia === k ? 'on' : ''}" data-act="arFrec" data-v="${k}" aria-pressed="${f.frecuencia === k}">${l}</button>`).join('')}</div></div>
+    ${arDiaHTML(f)}
     <button type="button" class="btn btn-p block" data-act="arFijoAgregar">${ic('add', 20, 2.6)}Agregar a mi lista</button>
   </div>
   <div class="card" style="padding:6px 16px">
     <div class="row" style="padding:10px 0 4px"><b style="font-size:16px">Mi lista de gastos fijos</b><span class="badge neu">${L.length}</span></div>
-    ${L.length ? L.map(g => `<div class="list-item"><span class="col" style="flex:1;gap:2px"><b style="font-size:15.5px">${esc(g.nombre)}</b><span class="small muted num">${money(g.valor)} ${arFrecTxt(g.frecuencia)}</span></span><button type="button" class="btn btn-l xs" data-act="arFijoQuitar" data-id="${g.id}" aria-label="Quitar ${esc(g.nombre)}">${ic('trash', 16)}Quitar</button></div>`).join('')
+    ${L.length ? L.map(g => `<div class="list-item"><span class="col" style="flex:1;gap:2px"><b style="font-size:15.5px">${esc(g.nombre)}</b><span class="small muted num">${money(g.valor)} ${arFrecTxt(g.frecuencia)} · ${esc(frecTxt(g).replace(/^Cada [^,]*, /, ''))}</span></span><button type="button" class="btn btn-l xs" data-act="arFijoQuitar" data-id="${g.id}" aria-label="Quitar ${esc(g.nombre)}">${ic('trash', 16)}Quitar</button></div>`).join('')
       : '<div class="empty" style="padding:14px 6px">Todavía no has agregado ninguno. Llena el cuadro de arriba y toca «Agregar a mi lista».</div>'}
   </div>
   <div class="ar-total"><span>Tus gastos fijos suman</span><b class="num">${money(Math.round(totMes))} <small>al mes</small></b></div>
@@ -3455,14 +3486,18 @@ function arTerminar() { S.config.arranque = iso(TODAY()); S.welcome = false; sav
 const AR_ACT = {
   arFijoAdd: (el, id, v) => { arLeer(); AR.f.nombre = v || ''; render(); const inp = document.getElementById('arFv'); if (inp) { inp.focus(); inp.scrollIntoView({ block: 'center' }); } },
   arFijoQuitar: (el, id) => { arLeer(); const g = S.gastosFijos.find(x => x.id === id); S.gastosFijos = S.gastosFijos.filter(x => x.id !== id); save(); render(); if (g) toast(`Quitaste «${g.nombre}»`); },
-  arFrec: (el, id, v) => { arLeer(); AR.f.frecuencia = v; render(); },
+  arFrec: (el, id, v) => { arLeer(); if (AR.f.frecuencia !== v) { AR.f.frecuencia = v; AR.f.dia = null; AR.f.mes = null; } render(); },
+  arDia: (el, id, v) => { arLeer(); AR.f.dia = Number(v); render(); },
+  arMes: (el, id, v) => { arLeer(); AR.f.mes = Number(v); if (AR.f.dia && AR.f.dia > dim(2026, Number(v) - 1)) AR.f.dia = null; render(); },
   arFijoAgregar: () => {
     arLeer();
     const n = AR.f.nombre.trim().replace(/\s+/g, ' '), v = num(AR.f.valor);
     if (!n) { toast('Escribe qué es, o toca uno de la lista'); const e = document.getElementById('arFn'); if (e) e.focus(); return false; }
     if (!v) { toast(`Escribe cuánto pagas de «${n}»`); const e = document.getElementById('arFv'); if (e) e.focus(); return false; }
-    S.gastosFijos.push({ id: uid(), nombre: n.charAt(0).toUpperCase() + n.slice(1), valor: v, frecuencia: AR.f.frecuencia, dia: 1, mes: 1, pagos: [] });
-    save(); AR.f = { nombre: '', valor: '', frecuencia: 'mensual' }; render();
+    if (AR.f.frecuencia === 'anual' && !AR.f.mes) { toast('Toca el mes en que lo pagas'); return false; }
+    if (!AR.f.dia) { toast(AR.f.frecuencia === 'semanal' ? 'Toca el día de la semana en que lo pagas' : 'Toca el día en que lo pagas'); const e = document.querySelector('.ar-dia'); if (e) e.scrollIntoView({ block: 'center' }); return false; }
+    S.gastosFijos.push({ id: uid(), nombre: n.charAt(0).toUpperCase() + n.slice(1), valor: v, frecuencia: AR.f.frecuencia, dia: AR.f.dia, mes: AR.f.mes || 1, pagos: [] });
+    save(); AR.f = { nombre: '', valor: '', frecuencia: 'mensual', dia: null, mes: null }; render();
     const f = document.getElementById('arForm'); if (f) f.scrollIntoView({ block: 'start' });
     toast(`Agregaste «${n}». Si tienes otro, agrégalo igual`);
     return true;
@@ -3475,7 +3510,7 @@ const AR_ACT = {
     AR.paso = 2; if (!on('inventario')) arTerminar();
     render(); window.scrollTo(0, 0);
   },
-  arSinFijos: () => { arLeer(); AR.f = { nombre: '', valor: '', frecuencia: 'mensual' }; AR.paso = 2; if (!on('inventario')) arTerminar(); render(); window.scrollTo(0, 0); },
+  arSinFijos: () => { arLeer(); AR.f = { nombre: '', valor: '', frecuencia: 'mensual', dia: null, mes: null }; AR.paso = 2; if (!on('inventario')) arTerminar(); render(); window.scrollTo(0, 0); },
   arDespues: () => { S.welcome = false; save(); AR = null; go('inicio'); toast('Cuando quieras, lo terminas desde el inicio'); },
   arAtras: () => { arLeer(); AR.paso = 1; render(); window.scrollTo(0, 0); },
   arInvAdd: () => { arLeer(); AR.inv.push({ nombre: '', cant: '', unidad: 'unidades', costo: '', modo: 'uno' }); render(); const inp = document.getElementById('arIn' + (AR.inv.length - 1)); if (inp) { inp.focus(); inp.scrollIntoView({ block: 'center' }); } },
