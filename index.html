@@ -1655,7 +1655,7 @@ const CAMPOS_TXT = [
   ['cliente_nombre', 'Nombre del cliente', 'Para tenerlo guardado y volverle a vender.', 'clientes'],
   ['cliente_telefono', 'Celular del cliente', 'Para escribirle por WhatsApp en sus fechas especiales.', 'clientes'],
   ['persona', 'Para quién es y la ocasión', 'Cumpleaños o aniversario, para avisarte el próximo año.', 'clientes'],
-  ['empleado', 'Quién lo hizo', 'Para sumarle a esa persona lo de cada producto.', 'equipo'],
+  ['empleado', 'Quién lo hizo', 'Para sumarle a esa persona lo de cada producto. Se prende solo cuando a alguien le pagas por producto.', 'equipo'],
   ['pago', 'Cómo pagó', 'Nequi, efectivo, transferencia o tarjeta.', null],
   ['domicilio', 'Si cobraste domicilio', 'Para que no se te olvide sumar el domicilio.', 'domicilios'],
   ['abono', 'Si pagó todo o dejó abono', 'Para saber cuánto te deben.', 'abonos']
@@ -2759,7 +2759,7 @@ function empEditSheet() {
   ${e.tipo === 'fijo' ? `<div class="fgrid">${f('valorFijo', 'Valor de cada pago', e.valorFijo)}<div class="field"><label for="edfr">Cada cuánto</label><select class="inp" id="edfr" data-in="edT" data-k="frecuencia"><option value="mensual" ${e.frecuencia !== 'quincenal' ? 'selected' : ''}>Cada mes</option><option value="quincenal" ${e.frecuencia === 'quincenal' ? 'selected' : ''}>Cada quincena (15 y 30)</option></select></div>
     <div class="field"><label for="ed-diaPago">Día de pago (mensual)</label><input class="inp num" id="ed-diaPago" data-in="edT" data-k="diaPago" inputmode="numeric" value="${e.diaPago || 30}"></div></div>` : ''}
   ${e.tipo === 'dia' ? `<div class="fgrid">${f('valorDia', 'Valor por día', e.valorDia)}</div>` : ''}
-  ${e.tipo === 'producto' ? `<p class="small muted" style="margin:0">Se le paga lo que diga cada producto en «Mano de obra», por ejemplo ${money(8000)} por un Ramo Pasión. Se suma solo cuando lo eligen en «¿Quién lo hizo?».</p>` : ''}
+  ${e.tipo === 'producto' ? `<p class="small muted" style="margin:0">Se le paga lo que diga cada producto en «Mano de obra», por ejemplo ${money(8000)} por un Ramo Pasión. Se suma solo cuando lo eligen en «¿Quién lo hizo?», que se va a preguntar en cada venta.</p>` : ''}
   ${e.tipo === 'mixto' ? `<div class="fgrid">${f('base', 'Base mensual', e.base)}${f('valorProducto', 'Valor por producto', e.valorProducto)}<div class="field"><label for="ed-diaPago2">Día de pago</label><input class="inp num" id="ed-diaPago2" data-in="edT" data-k="diaPago" inputmode="numeric" value="${e.diaPago || 30}"></div></div>` : ''}
   <div class="small" data-tour="edAcceso" style="background:var(--soft);border-radius:12px;padding:10px 12px;line-height:1.5"><b>¿Va a entrar a la plataforma?</b> Invítalo con su correo en «Mi negocio → Usuarios y claves». Nunca va a ver la ganancia del negocio.</div>
   <div class="row" style="gap:10px"><button type="button" class="btn btn-p" style="flex:2" data-act="edSave" data-tour="edSave">${ic('check', 20, 2.6)}Guardar</button>${!e.isNew ? `<button type="button" class="btn btn-d" style="flex:1" data-act="edDel">Quitar</button>` : ''}</div>`;
@@ -4068,7 +4068,33 @@ const ACT = {
   empEdit: (el, id) => { ED = JSON.parse(JSON.stringify(emp(id))); openSheet(empEditSheet); },
   empNew: () => { ED = { id: 'e' + uid(), nombre: '', rol: '', tipo: 'dia', valorDia: 60000, valorFijo: 1423500, frecuencia: 'mensual', diaPago: 30, base: 300000, valorProducto: 3000, acceso: 'ninguno', dias: [], vales: [], ultimoPago: isoDT(new Date()), isNew: true }; openSheet(empEditSheet); },
   edTipo: (el, id, v) => { ED.tipo = v; drawSheet(); },
-  edSave: () => { if (!ED.nombre.trim()) return toast('Escribe el nombre'); const { isNew, ...e } = ED; e.nombre = e.nombre.trim(); e.rol = e.rol.trim() || 'Equipo'; const i = S.empleados.findIndex(x => x.id === e.id); if (i >= 0) S.empleados[i] = e; else S.empleados.push(e); save(); closeSheet(); render(); toast('Guardado'); },
+  edSave: () => {
+    if (!ED.nombre.trim()) return toast('Escribe el nombre');
+    const { isNew, ...e } = ED; e.nombre = e.nombre.trim(); e.rol = e.rol.trim() || 'Equipo';
+    const i = S.empleados.findIndex(x => x.id === e.id);
+    const porProd = t => t === 'producto' || t === 'mixto';
+    const ahoraPorProd = porProd(e.tipo) && !(i >= 0 && porProd(S.empleados[i].tipo));
+    if (i >= 0) S.empleados[i] = e; else S.empleados.push(e);
+    save(); closeSheet(); render();
+    // Si le paga por cada producto, lo que te queda depende de quién lo hizo: se pregunta siempre (se puede apagar en Funcionalidades)
+    if (ahoraPorProd && S.campos && S.campos.empleado && !S.campos.empleado.obligatorio && !S.campos.empleado.candado) {
+      S.campos.empleado.obligatorio = true;
+      if (SES.negocio && sb) sb.from('campos').update({ obligatorio: true }).eq('negocio_id', SES.negocio.id).eq('clave', 'empleado').then(({ error }) => { if (error) { toast('No se pudo cambiar: ' + errTxt(error)); recargarConfig(); } });
+      openSheet(() => `<div class="sheet-h"><h3>Desde ahora te preguntamos quién lo hizo</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
+        <p style="margin:0;font-size:16px;line-height:1.5">Como a <b>${esc(first(e.nombre))}</b> le pagas por cada producto, en cada venta vas a escoger <b>quién lo hizo</b>. Así se le suma a la persona correcta y lo que te queda sale bien.</p>
+        <p class="small muted" style="margin:0;line-height:1.5">Si no quieres que se pregunte siempre, lo apagas en «Funcionalidades», en «Datos que siempre se preguntan».</p>
+        <div class="row" style="gap:10px;flex-wrap:wrap"><button type="button" class="btn btn-p" style="flex:1" data-act="close">Entendido</button><button type="button" class="btn btn-l" style="flex:1" data-act="empNoPreguntar">No preguntar siempre</button></div>`);
+      return;
+    }
+    toast('Guardado');
+  },
+  empNoPreguntar: async () => {
+    closeSheet(); if (!S.campos || !S.campos.empleado) return;
+    S.campos.empleado.obligatorio = false; render();
+    const { error } = await sb.from('campos').update({ obligatorio: false }).eq('negocio_id', SES.negocio.id).eq('clave', 'empleado');
+    if (error) { toast('No se pudo cambiar: ' + errTxt(error)); return recargarConfig(); }
+    toast('Listo, no se pregunta siempre. Lo puedes prender en Funcionalidades.');
+  },
   edDel: () => { const i = S.empleados.findIndex(x => x.id === ED.id); const [e] = S.empleados.splice(i, 1); save(); closeSheet(); render(); toast(`${e.nombre} salió del equipo`, () => { S.empleados.splice(i, 0, e); save(); render(); }); },
   // clientes
   cliOpen: (el, id, v) => { CS = { id, per: v || null, msg: null }; openSheet(cliSheet); },
