@@ -1,3 +1,6 @@
 # Archivos que no se suben a GitHub (el repositorio es público)
 supabase/
 Claude outputs/
+# Claves y códigos privados: nunca en esta carpeta
+*recovery-codes*
+*.env

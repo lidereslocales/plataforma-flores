@@ -147,6 +147,10 @@ textarea.inp{padding:12px 14px;min-height:120px;line-height:1.45;resize:vertical
 .toggle{width:52px;height:32px;border-radius:99px;background:#CBD5E1;position:relative;flex:none;border:none;padding:0}
 .toggle i{position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:#fff;transition:left .15s}
 .toggle.on{background:var(--green)}
+.optc{display:flex;gap:12px;align-items:center;text-align:left;padding:12px 14px;border:2px solid var(--line);border-radius:14px;background:#fff;width:100%;color:var(--ink);font:inherit;cursor:pointer}
+.optc b{font-size:16px}.optc.on{border-color:var(--green);background:var(--green-l)}
+.optc-r{width:22px;height:22px;border-radius:50%;border:2px solid var(--line2);flex:none;display:grid;place-items:center}
+.optc.on .optc-r{border-color:var(--green);background:var(--green);box-shadow:inset 0 0 0 4px #fff}
 .toggle.on i{left:24px}
 
 /* vender */
@@ -408,8 +412,12 @@ const GUIAS = {
     'Cuando la barra se llena, todo lo que siga entrando es ganancia.'] }),
   'mi-negocio': () => ({ t: 'Los datos y ajustes de tu negocio. Casi siempre lo dejamos listo contigo al empezar.', p: [
     'En «Precios y ganancia» eliges cuánto quieres que te quede de cada producto (mínimo 30%).',
-    'En «Usuarios y claves» invitas por correo a tu secretaria o tu equipo: a cada uno le llega un enlace para escoger su usuario y su clave.',
+    'En «Personas y WhatsApp» invitas a tu equipo, decides qué puede hacer cada uno y conectas su WhatsApp con Lidera.',
     'Si te equivocas en algo, en «Auditoría» lo puedes deshacer.'] }),
+  personas: () => ({ t: 'Aquí decides quién entra a tu negocio, qué puede hacer y con qué WhatsApp le escribe a Lidera.', p: [
+    'Toca «Invitar a alguien», escoge si es dueño, asistente o empleado y pon su correo y su WhatsApp.',
+    'Lo que puede hacer viene listo según lo que escojas. Si quieres darle más o quitarle algo, toca «Cambiar lo que puede hacer».',
+    'Para que Lidera le conteste por WhatsApp, cada persona conecta su número una sola vez: le llega un mensaje listo y lo envía.'] }),
   inventario: () => ({ t: 'Aquí ves cuánto tienes de cada insumo y a qué precio lo compraste.', p: [
     'La primera vez, toca «Empezar el conteo» y escribe lo que tienes hoy.',
     'Cada compra suma lo nuevo y cada venta gasta primero lo más viejo. Si un producto lleva de lo viejo y de lo nuevo, cada parte se cobra a su precio.',
@@ -464,7 +472,8 @@ const INFO = {
   domicilio: ['Domicilio', 'Lo que le cobras al cliente por llevar el pedido. Lo paga el cliente aparte: se ve en lo que pagó, pero no se suma a lo que te queda ni paga comisión, porque es para quien lo lleva.'],
   entregas: ['A domicilio', 'Cuántas de tus ventas fueron a domicilio y cuántas las recogieron en la tienda. Sirve para saber dónde vendes más.'],
   obligatorios: ['Datos que siempre se preguntan', 'Si prendes uno, el WhatsApp te lo pregunta cuando se te olvida decirlo, y el formulario de «Vender» no deja guardar sin ese dato. Los que tienen candado los maneja Líderes Locales.'],
-  usuarios: ['Usuarios y claves', 'Invita a cada persona con su correo: le llega un enlace para que ella misma escoja su usuario y su clave. La secretaria no ve las ganancias y cada empleado solo ve lo suyo. Si a alguien se le olvida la clave, toca «Se me olvidó la clave» al entrar y le llega un correo.'],
+  usuarios: ['Las personas de tu negocio', 'Cada persona entra con su propio usuario y clave. El dueño tiene todo; el asistente registra ventas y gastos; el empleado registra sus ventas y ve lo que lleva ganado. Tú decides si les prendes más cosas. Si a alguien se le olvida la clave, toca «Se me olvidó la clave» al entrar y le llega un correo.'],
+  permisos: ['Lo que puede hacer', 'Lo que prendas aquí sirve igual en la página y por WhatsApp. Por ejemplo, si no le prendes «Ver cuánto se gana», no ve las ganancias en la página ni Lidera se las dice por WhatsApp. Lo puedes cambiar cuando quieras.'],
   extra: ['Extras', 'Cosas que se venden aparte junto con el producto, como chocolates, globos o vinos. Según lo acordado con tu negocio, no pagan comisión.']
 };
 const info = k => `<button type="button" class="info" data-act="info" data-id="${k}" aria-label="Qué significa: ${esc(INFO[k] ? INFO[k][0] : '')}">i</button>`;
@@ -912,7 +921,8 @@ function mensaje(c, p) {
   return t.replace('{cliente}', first(c.nombre)).replace('{fecha}', d ? fLarga(d) : 'próximo día especial').replace('{ocasion}', p ? ocasionTxt(p.ocasion) : 'una fecha especial')
     .replace('{persona}', p ? p.nombre : 'alguien especial').replace('{producto}', last ? last.nombre : 'algo especial').replace('{negocio}', S.config.negocio);
 }
-const waLink = (tel, txt) => `https://wa.me/57${String(tel || '').replace(/\D/g, '')}?text=${encodeURIComponent(txt)}`;
+// Abre WhatsApp con un cliente: si el número no trae el código del país, se usa el del negocio
+const waLink = (tel, txt) => { const d = String(tel || '').replace(/\D/g, ''); return `https://wa.me/${d.length > 10 ? d : paisNegocio() + d}?text=${encodeURIComponent(txt)}`; };
 const recuperadoMes = () => { const T = TODAY(); const a = new Date(T.getFullYear(), T.getMonth(), 1); const vs = ventasEn(a, T).filter(v => v.recuperada); return { n: vs.length, total: vs.reduce((s, v) => s + v.total, 0) }; };
 
 /* =========================================================
@@ -920,28 +930,70 @@ const recuperadoMes = () => { const T = TODAY(); const a = new Date(T.getFullYea
    ========================================================= */
 const ME = () => emp(S.rol) || { id: S.rol, nombre: SES.nombre || 'Equipo', rol: 'Equipo', tipo: 'dia', valorDia: 0, dias: [], vales: [], ultimoPago: null };
 const ROL = () => SES.rol || 'duena';
+/* ---------- Lo que puede hacer cada persona (lo mismo en la página y por WhatsApp; igual que en la base de datos) ---------- */
+const PERMS = [
+  ['vender', 'Registrar ventas', 'Anotar lo que vende, aquí o con un audio por WhatsApp.', 'Ventas'],
+  ['ventas', 'Ver todas las ventas', 'Si está apagado, solo ve las ventas que registró.', 'Ver todas las ventas'],
+  ['corregir', 'Corregir y anular ventas', 'Cualquier venta. Si está apagado, solo arregla las que registró.', 'Corregir ventas'],
+  ['gastos', 'Gastos del día', 'Anotar domicilios, bolsas, transporte y lo del día.', 'Gastos del día'],
+  ['gastos_fijos', 'Gastos fijos', 'Ver y pagar el arriendo, los servicios y las cuotas.', 'Gastos fijos'],
+  ['compras', 'Compras e inventario', 'Anotar compras de insumos y contar lo que hay.', 'Compras'],
+  ['productos', 'Productos y precios', 'Cambiar precios y recetas y agregar productos. Ve cuánto deja cada uno.', 'Productos'],
+  ['clientes', 'Clientes', 'Ver los clientes y a quién toca escribirle.', 'Clientes'],
+  ['resumen', 'Ver cuánto se gana', 'El Resumen, lo que queda de cada venta y la meta del mes.', 'Ganancias'],
+  ['equipo', 'Equipo y pagos', 'Lo que se le debe a cada persona, pagos y vales.', 'Equipo']
+];
+const PERM_K = PERMS.map(p => p[0]);
+const permBase = rol => Object.fromEntries(PERM_K.map(k => [k, rol === 'dueno' ? true : rol === 'secretaria' ? k === 'vender' || k === 'gastos' : k === 'vender']));
+const permisosDe = (rol, p) => { const b = permBase(rol); if (rol === 'dueno' || !p || typeof p !== 'object') return b; PERM_K.forEach(k => { if (typeof p[k] === 'boolean') b[k] = p[k]; }); return b; };
+const P = k => !!SES.admin || ROL() === 'duena' || !!(SES.permisos && SES.permisos[k]);
+const permCorto = (rol, p) => { if (rol === 'dueno') return 'Todo'; const m = permisosDe(rol, p); const L = PERMS.filter(([k]) => m[k]).map(x => x[3]); return L.length ? L.join(' · ') : 'Nada prendido'; };
+/* ---------- WhatsApp con el código del país ---------- */
+const PAISES = [['57', 'Colombia', '🇨🇴', 10], ['56', 'Chile', '🇨🇱', 9], ['52', 'México', '🇲🇽', 10], ['507', 'Panamá', '🇵🇦', 8], ['593', 'Ecuador', '🇪🇨', 9], ['51', 'Perú', '🇵🇪', 9],
+  ['34', 'España', '🇪🇸', 9], ['549', 'Argentina', '🇦🇷', 10], ['506', 'Costa Rica', '🇨🇷', 8], ['502', 'Guatemala', '🇬🇹', 8], ['58', 'Venezuela', '🇻🇪', 10], ['1', 'Estados Unidos', '🇺🇸', 10]];
+const TEL_EJ = { '57': '300 123 4567', '56': '9 1234 5678', '52': '55 1234 5678', '507': '6123 4567', '593': '99 123 4567', '51': '912 345 678', '34': '612 345 678' };
+const TZ_PAIS = { 'America/Santiago': '56', 'America/Panama': '507', 'America/Guayaquil': '593', 'America/Lima': '51', 'Europe/Madrid': '34', 'America/Caracas': '58', 'America/Costa_Rica': '506', 'America/Guatemala': '502' };
+const paisNegocio = () => { const tz = (S && S.negocioDB && S.negocioDB.zona_horaria) || 'America/Bogota'; if (/^America\/(Mexico|Monterrey|Merida|Cancun|Tijuana|Chihuahua|Hermosillo|Mazatlan|Bahia)/.test(tz)) return '52'; if (/^America\/Argentina/.test(tz)) return '549'; return TZ_PAIS[tz] || '57'; };
+// Separa un número guardado (con el código del país) en [país, número]
+const telPartes = t => { const d = String(t || '').replace(/\D/g, ''); if (!d) return [paisNegocio(), '']; if (d.length <= 10) return [paisNegocio(), d];
+  const L = PAISES.slice().sort((a, b) => b[0].length - a[0].length); const x = L.find(p => d.startsWith(p[0]) && d.length - p[0].length === p[3]) || L.find(p => d.startsWith(p[0]));
+  return x ? [x[0], d.slice(x[0].length)] : [paisNegocio(), d]; };
+const telFmt = t => { const [c, n] = telPartes(t); return n ? `+${c} ${n.replace(/(\d{3})(?=\d{3})/g, '$1 ')}` : ''; };
+const telCampo = (id, [c, n], label, ayuda) => `<div class="field"><label for="${id}">${label}</label><div class="row" style="gap:8px;flex-wrap:nowrap">
+  <select class="inp" id="${id}P" aria-label="País" style="width:auto;flex:none;padding-right:4px">${PAISES.map(p => `<option value="${p[0]}" ${p[0] === c ? 'selected' : ''}>${p[2]} +${p[0]}</option>`).join('')}</select>
+  <input class="inp" id="${id}" inputmode="tel" autocomplete="tel" value="${esc(n || '')}" placeholder="${TEL_EJ[c] || 'Número de celular'}" style="flex:1;min-width:0"></div>${ayuda ? `<span class="xs muted">${ayuda}</span>` : ''}</div>`;
+// Lee el número con su país: '' si está vacío, null si no tiene los números que son
+const telLeer = id => { const el = document.getElementById(id); if (!el) return undefined; const c = (document.getElementById(id + 'P') || {}).value || paisNegocio();
+  const len = (PAISES.find(p => p[0] === c) || [])[3]; let n = el.value.replace(/\D/g, ''); if (!n) return '';
+  if (len && n.length > len && n.startsWith(c)) n = n.slice(c.length); n = n.replace(/^0+/, ''); if (len && n.length !== len) return null; return c + n; };
+const telMal = id => { const c = (document.getElementById(id + 'P') || {}).value || paisNegocio(); const p = PAISES.find(x => x[0] === c); return p ? `Revisa el WhatsApp: en ${p[1]} el celular tiene ${p[3]} números` : 'Revisa el número de WhatsApp'; };
+let LIDERA_WA = null;
+async function cargarLideraWA() { try { const { data } = await sb.from('lidera_config').select('valor').eq('clave', 'whatsapp'); const v = data && data[0] && data[0].valor; LIDERA_WA = v ? String(v).replace(/\D/g, '') : null; } catch (e) { LIDERA_WA = null; } }
+const waEstado = m => !m || !m.telefono ? ['neu', 'Sin WhatsApp'] : m.wa_verificado ? ['ok', 'WhatsApp conectado'] : ['warn', 'Falta conectar'];
+const waLidera = m => `https://wa.me/${LIDERA_WA}?text=${encodeURIComponent(`Hola Lidera, soy ${primerNom(m.nombre)}. Mi código es ${m.wa_codigo || ''}`)}`;
 const roleOpts = () => [];
 // g: grupo del menú · main: va en la barra de abajo del celular · oculto: se entra desde un botón, no desde el menú
 const NAV = [
   { id: 'inicio', label: 'Inicio', icon: 'home', roles: ['duena', 'secretaria', 'florista'], main: 1, g: 'Día a día' },
-  { id: 'ventas', label: 'Ventas', icon: 'list', roles: ['duena', 'secretaria', 'florista'], main: 1, g: 'Día a día' },
-  { id: 'gastos', label: 'Gastos', icon: 'wallet', roles: ['duena', 'secretaria'], mod: 'gastos', main: 1, g: 'Día a día' },
-  { id: 'como-voy', label: 'Resumen', icon: 'chart', roles: ['duena'], main: 1, g: 'Día a día' },
-  { id: 'vender', label: 'Registrar venta', icon: 'plus', roles: ['duena', 'secretaria', 'florista'], oculto: 1 },
+  { id: 'ventas', label: 'Ventas', icon: 'list', roles: ['duena', 'secretaria', 'florista'], p: ['vender', 'ventas'], main: 1, g: 'Día a día' },
+  { id: 'gastos', label: 'Gastos', icon: 'wallet', roles: ['duena', 'secretaria'], p: ['gastos', 'gastos_fijos'], mod: 'gastos', main: 1, g: 'Día a día' },
+  { id: 'como-voy', label: 'Resumen', icon: 'chart', roles: ['duena'], p: ['resumen'], main: 1, g: 'Día a día' },
+  { id: 'vender', label: 'Registrar venta', icon: 'plus', roles: ['duena', 'secretaria', 'florista'], p: ['vender'], oculto: 1 },
   { id: 'empezar', label: 'Configurar mi negocio', icon: 'sliders', roles: ['duena'], oculto: 1 },
-  { id: 'clientes', label: 'Clientes', icon: 'users', roles: ['duena', 'secretaria'], mod: 'clientes', g: 'Tu negocio' },
-  { id: 'productos', label: 'Productos y precios', icon: 'flower', roles: ['duena', 'secretaria'], g: 'Tu negocio' },
-  { id: 'compras', label: 'Compras', icon: 'cart', roles: ['duena', 'secretaria'], mod: 'compras', g: 'Tu negocio' },
-  { id: 'inventario', label: 'Inventario', icon: 'box', roles: ['duena', 'secretaria'], mod: 'inventario', g: 'Tu negocio' },
-  { id: 'equipo', label: 'Equipo', icon: 'team', roles: ['duena'], mod: 'equipo', g: 'Tu negocio' },
+  { id: 'clientes', label: 'Clientes', icon: 'users', roles: ['duena', 'secretaria'], p: ['clientes'], mod: 'clientes', g: 'Tu negocio' },
+  { id: 'productos', label: 'Productos y precios', icon: 'flower', roles: ['duena', 'secretaria'], p: ['productos'], g: 'Tu negocio' },
+  { id: 'compras', label: 'Compras', icon: 'cart', roles: ['duena', 'secretaria'], p: ['compras'], mod: 'compras', g: 'Tu negocio' },
+  { id: 'inventario', label: 'Inventario', icon: 'box', roles: ['duena', 'secretaria'], p: ['compras'], mod: 'inventario', g: 'Tu negocio' },
+  { id: 'equipo', label: 'Equipo', icon: 'team', roles: ['duena'], p: ['equipo'], mod: 'equipo', g: 'Tu negocio' },
   { id: 'mi-negocio', label: 'Mi negocio', icon: 'sliders', roles: ['duena'], g: 'Ajustes' },
+  { id: 'personas', label: 'Personas y WhatsApp', icon: 'user', roles: ['duena'], g: 'Ajustes' },
   { id: 'funciones', label: 'Funcionalidades', icon: 'grid', roles: ['duena'], g: 'Ajustes' },
   { id: 'auditoria', label: 'Auditoría', icon: 'lock', roles: ['duena'], g: 'Ajustes' },
   { id: 'guia', label: 'Guía', icon: 'help', roles: ['duena', 'secretaria', 'florista'], g: 'Ajustes' }
 ];
 // Agrupa los elementos del menú con su título de grupo
 const navAgrupado = (items, fn) => { let g0 = null; return items.map(n => { const t = n.g && n.g !== g0 ? `<div class="nav-g">${n.g}</div>` : ''; g0 = n.g || g0; return t + fn(n); }).join(''); };
-const navFor = () => NAV.filter(n => n.roles.includes(ROL()) && (!n.mod || on(n.mod)) && (!n.admin || SES.admin));
+const navFor = () => NAV.filter(n => (n.p ? n.p.some(P) : n.roles.includes(ROL())) && (!n.mod || on(n.mod)) && (!n.admin || SES.admin));
 const route = () => { const h = (location.hash || '').replace('#', ''); const ok = navFor().find(n => n.id === h); return ok ? h : 'inicio'; };
 const go = id => { if (location.hash === '#' + id) render(); else location.hash = id; };
 
@@ -983,37 +1035,47 @@ VIEWS.inicio = () => {
     <div class="card hero"><div class="row"><span class="lab">Llevas ganado desde tu último pago</span>${info('deuda')}</div>
     <div class="big num">${money(d.total)}</div><div class="lab" style="margin-top:6px">${d.units} productos${d.vales ? ` · vales ${money(-d.vales)}` : ''}</div></div>
     <a class="btn btn-p block" href="#vender" style="min-height:64px;font-size:18px">${ic('add', 24, 2.4)}Registrar venta</a>
+    ${waAvisoHTML()}
     ${periodoBar()}
     <div class="card">${mine.length ? mine.slice().reverse().map(v => ventaRow(v, false)).join('') : `<div class="empty">No registraste ventas ${hoyEs ? 'hoy' : 'en estos días'}.</div>`}</div>
     <p class="small muted">Con tu usuario puedes registrar ventas y ver lo que llevas ganado. Las ganancias del negocio solo las ve la dueña.</p>`;
   }
-  const own = ROL() === 'duena';
+  const own = P('resumen');
   const avisos = own ? avisosHoy() : [];
   const hoy = ventasEn(TODAY(), TODAY()).length;
-  return `<h2 class="v-title">Hola${own ? (S.config.duena ? ', ' + esc(S.config.duena) : '') : ', ' + esc(ME().nombre)}</h2>
+  return `<h2 class="v-title">Hola${ROL() === 'duena' ? (S.config.duena ? ', ' + esc(S.config.duena) : '') : ', ' + esc(primerNom(SES.nombre || ME().nombre))}</h2>
   ${guiaSec('inicio')}
-  <a class="accion venta" href="#vender" data-tour="btnVenta"><span class="ai">${ic('add', 30, 2.6)}</span><span><b>Registrar venta</b><span class="as">${hoy ? `Hoy llevas ${hoy} venta${hoy === 1 ? '' : 's'}` : 'Toca la foto de lo que vendiste'}</span></span></a>
-  ${on('gastos') ? `<div class="acciones2">
-    <button type="button" class="accion dia" data-act="gastoDia" data-tour="btnDia"><span class="ai">${ic('wallet', 26, 2.4)}</span><span><b>Gasto del día</b><span class="as">Domicilios, bolsas, transporte</span></span></button>
-    <button type="button" class="accion fijo" data-act="gastoFijo" data-tour="btnFijo"><span class="ai">${ic('cal', 26, 2.4)}</span><span><b>Gasto fijo</b><span class="as">Arriendo, servicios, cuotas</span></span></button>
+  ${P('vender') ? `<a class="accion venta" href="#vender" data-tour="btnVenta"><span class="ai">${ic('add', 30, 2.6)}</span><span><b>Registrar venta</b><span class="as">${hoy ? `Hoy llevas ${hoy} venta${hoy === 1 ? '' : 's'}` : 'Toca la foto de lo que vendiste'}</span></span></a>` : ''}
+  ${on('gastos') && (P('gastos') || P('gastos_fijos')) ? `<div class="acciones2" style="${P('gastos') && P('gastos_fijos') ? '' : 'grid-template-columns:1fr'}">
+    ${P('gastos') ? `<button type="button" class="accion dia" data-act="gastoDia" data-tour="btnDia"><span class="ai">${ic('wallet', 26, 2.4)}</span><span><b>Gasto del día</b><span class="as">Domicilios, bolsas, transporte</span></span></button>` : ''}
+    ${P('gastos_fijos') ? `<button type="button" class="accion fijo" data-act="gastoFijo" data-tour="btnFijo"><span class="ai">${ic('cal', 26, 2.4)}</span><span><b>Gasto fijo</b><span class="as">Arriendo, servicios, cuotas</span></span></button>` : ''}
   </div>` : ''}
+  ${waAvisoHTML()}
   ${own ? `<div class="sect">Pendientes</div>${avisos.length ? avisos.slice(0, 4).join('') + (avisos.length > 4 ? `<p class="small muted" style="margin:0">Y ${avisos.length - 4} más. Los vas viendo a medida que resuelves estos.</p>` : '') : '<div class="card empty">Todo al día. No hay nada pendiente.</div>'}
   <a class="btn btn-l block" href="#como-voy" style="min-height:52px">${ic('chart')}Ver mi resumen: ventas y ganancia</a>` : ''}
-  ${!own ? `<p class="small muted">Con el usuario de secretaria puedes registrar ventas, gastos y clientes. Las ganancias del negocio solo las ve la dueña.</p>` : ''}`;
+  ${ROL() !== 'duena' ? `<p class="small muted">Con tu usuario puedes: ${esc(permCorto('secretaria', SES.permisos).toLowerCase())}. Si necesitas algo más, pídeselo al dueño.</p>` : ''}`;
 };
+// Aviso en el inicio para poner o conectar el WhatsApp con Lidera
+function waAvisoHTML() {
+  if (!on('whatsapp') || SES.admin) return '';
+  const y = miMiembro(); if (!y || y.wa_verificado || (y.telefono && !LIDERA_WA)) return '';
+  try { if (sessionStorage.getItem('mno-wa-no')) return ''; } catch (e) { }
+  return `<div class="alert" style="flex-wrap:wrap"><div class="ic t-mix">${ic('msg')}</div><div class="tx" style="min-width:170px"><b>${y.telefono ? 'Conecta tu WhatsApp con Lidera' : 'Pon tu WhatsApp para hablar con Lidera'}</b><span class="muted">Para registrar ventas con un audio y preguntar cómo vas.</span></div>
+    <span class="row" style="gap:6px"><button type="button" class="btn btn-l xs" data-act="waNo">Ahora no</button><button type="button" class="btn btn-p sm" data-act="miWa">${y.telefono ? 'Conectar' : 'Ponerlo'}</button></span></div>`;
+}
 // Gasto del día: se elige qué fue y se escribe cuánto
 function gastoDiaSheet() {
   return `<div class="sheet-h"><h3>Gasto del día · ¿qué pagaste?</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
   <p class="small muted" style="margin:0;line-height:1.5">Toca lo que pagaste y escribe cuánto fue. Los sueldos van en Equipo y el arriendo o los servicios en «Gasto fijo».</p>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-    ${on('compras') ? `<button type="button" class="card" data-act="closeGo" data-id="compras" style="display:flex;flex-direction:column;align-items:center;gap:6px;font-weight:800;font-size:14.5px;text-align:center"><span class="thumb t-rose">${ic('box', 24)}</span>Insumos<span class="xs muted" style="font-weight:600">Actualiza lo que te cuesta cada producto</span></button>` : ''}
+    ${on('compras') && P('compras') ? `<button type="button" class="card" data-act="closeGo" data-id="compras" style="display:flex;flex-direction:column;align-items:center;gap:6px;font-weight:800;font-size:14.5px;text-align:center"><span class="thumb t-rose">${ic('box', 24)}</span>Insumos<span class="xs muted" style="font-weight:600">Actualiza lo que te cuesta cada producto</span></button>` : ''}
     ${CATS_GASTO.map(([c, i, t, d]) => `<button type="button" class="card" data-act="gastoNew" data-v="${c}" style="display:flex;flex-direction:column;align-items:center;gap:6px;font-weight:800;font-size:14.5px;text-align:center"><span class="thumb ${t}">${ic(i, 24)}</span>${c}<span class="xs muted" style="font-weight:600">${d}</span></button>`).join('')}
   </div>
   <button type="button" class="btn btn-l block" data-act="closeGo" data-id="gastos">Ver todos mis gastos</button>`;
 }
 // Gasto fijo: marcar como pagado lo que vence, o agregar uno nuevo
 function gastoFijoSheet() {
-  const T = TODAY(), own = ROL() === 'duena';
+  const T = TODAY(), own = P('gastos_fijos');
   const L = S.gastosFijos.map(g => ({ g, c: ciclo(g, T) })).sort((x, y) => (x.c.pagado - y.c.pagado) || (x.c.diff - y.c.diff));
   const sug = FIJOS_SUG.filter(n => !S.gastosFijos.some(g => sinTilde(g.nombre).includes(sinTilde(n.split(' ')[0]))));
   return `<div class="sheet-h"><h3>Gastos fijos</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
@@ -1050,7 +1112,7 @@ function ventaRow(v, showQ) {
   const its = v.items.map(x => `${x.cant > 1 ? x.cant + ' × ' : ''}${x.nombre}`).join(' + ') + (v.domicilio ? ' + domicilio' : '');
   const ob = !on('comision') ? '' : v.origen === 'google' ? '<span class="badge ok">Google</span>' : v.origen === 'parte' ? '<span class="badge warn">Parte Google</span>' : '<span class="badge neu">Otro lado</span>';
   const cuando = (v.numero ? '#' + v.numero + ' · ' : '') + (v.fecha.slice(0, 10) === iso(TODAY()) ? hora(v.fecha) : `${fCorta(parseD(v.fecha))} · ${hora(v.fecha)}`);
-  const puede = ROL() !== 'florista';
+  const puede = P('corregir') || !!(SES.user && v.creadoPor && v.creadoPor === SES.user.id);
   return `<div class="list-item">
     <div class="col" style="flex:1"><b style="font-size:15px">${esc(its)}</b><span class="small muted">${cuando} · ${c ? esc(c.nombre) : 'Sin datos del cliente'}${on('equipo') ? ' · ' + esc(empName(v.empleadoId)) : ''}</span><span class="row start" style="gap:6px;flex-wrap:wrap">${ob}${v.fuente && v.fuente !== 'web' ? '<span class="badge neu">WhatsApp</span>' : ''}${v.recuperada ? '<span class="badge rs">Recuperada</span>' : ''}${v.saldo > 0 ? `<span class="badge bad">Debe ${money(v.saldo)}</span>${puede ? `<button type="button" class="btn btn-p xs" data-act="saldoOk" data-id="${v.id}">Ya pagó</button>` : ''}` : ''}</span></div>
     <div class="col" style="align-items:flex-end;flex:none"><b class="num">${money(v.total)}</b>${showQ ? `<span class="small num" style="color:var(--green-d);font-weight:700">te quedó ${money(v.quedo)}</span>` : ''}
@@ -1092,7 +1154,7 @@ const FUNCS = [
   { g: 'Ayuda', items: [
     { k: 'buscador', t: 'Buscador «¿Qué necesitas?»', d: 'La barra del inicio y el botón «Buscar» de arriba, para escribir lo que quieres hacer y que te lleve ahí.' },
     { k: 'guia', t: 'Pasos para empezar', d: 'La tarjeta «Para empezar» del inicio con las misiones paso a paso.' },
-    { k: 'whatsapp', t: 'Ventas por WhatsApp', d: 'Registrar ventas mandando un audio o un mensaje por WhatsApp.' }
+    { k: 'whatsapp', t: 'Lidera por WhatsApp', d: 'Hablarle a Lidera por WhatsApp: registrar ventas con un audio y preguntar cómo va el negocio. Cada persona conecta su número en «Personas y WhatsApp».' }
   ] }
 ];
 const funcNombre = k => { for (const g of FUNCS) for (const it of g.items) if (it.k === k) return it.t; return k; };
@@ -1213,35 +1275,39 @@ const saldos = () => S.ventas.filter(v => v.saldo > 0);
    ========================================================= */
 const ACCIONES = [
   { t: 'Registrar una venta', p: 'vender venta nueva vendi anotar', go: 'vender' },
-  { t: 'Registrar una venta de un día pasado', p: 'ayer olvide anotar venta pasada fecha', fn: () => { D = newDraft(); D.fecha = iso(addD(TODAY(), -1)); go('vender'); } },
+  { t: 'Conectar mi WhatsApp con Lidera', p: 'whatsapp wasap ia inteligencia artificial audio conectar numero celular bot asistente lidera chat mensaje', fn: () => ACT.miWa(), mod: 'whatsapp', noAdm: 1 },
+  { t: 'Registrar una venta de un día pasado', p: 'ayer olvide anotar venta pasada fecha', fn: () => { D = newDraft(); D.fecha = iso(addD(TODAY(), -1)); go('vender'); }, perm: 'vender' },
   { t: 'Corregir o borrar una venta', p: 'editar corregir borrar venta equivocada error', go: 'ventas' },
   { t: 'Ver cómo me fue ayer', p: 'ayer dia anterior pasado ventas metricas', fn: () => { UI.per = { k: 'ayer' }; go('inicio'); } },
-  { t: '¿Cuánto me ha quedado este mes?', p: 'ganancia utilidad quedo mes cuanto gane plata', fn: () => { UI.per = { k: 'mes' }; go('como-voy'); }, own: 1 },
-  { t: 'Ver cómo me fue el mes pasado', p: 'mes pasado anterior ganancia utilidad', fn: () => { UI.per = { k: 'mesPasado' }; go('como-voy'); }, own: 1 },
-  { t: 'Cambiar el precio de un producto', p: 'precio subir bajar producto producto', go: 'productos', own: 1 },
-  { t: 'Revisar la receta de un producto', p: 'receta lleva flores costo confirmar', fn: () => { UI.pcat = '__est'; go('productos'); }, own: 1 },
-  { t: 'Ver los cambios de precio para la web', p: 'web pagina sincronizar cambios precios', fn: () => openSheet(cambiosSheet), own: 1 },
+  { t: '¿Cuánto me ha quedado este mes?', p: 'ganancia utilidad quedo mes cuanto gane plata', fn: () => { UI.per = { k: 'mes' }; go('como-voy'); }, perm: 'resumen' },
+  { t: 'Ver cómo me fue el mes pasado', p: 'mes pasado anterior ganancia utilidad', fn: () => { UI.per = { k: 'mesPasado' }; go('como-voy'); }, perm: 'resumen' },
+  { t: 'Cambiar el precio de un producto', p: 'precio subir bajar producto producto', go: 'productos', perm: 'productos' },
+  { t: 'Revisar la receta de un producto', p: 'receta lleva flores costo confirmar', fn: () => { UI.pcat = '__est'; go('productos'); }, perm: 'productos' },
+  { t: 'Ver los cambios de precio para la web', p: 'web pagina sincronizar cambios precios', fn: () => openSheet(cambiosSheet), perm: 'productos' },
   { t: 'Registrar una compra de insumos', p: 'compra compre flores insumos rosas plaza', go: 'compras', mod: 'compras' },
   { t: 'Cambiar lo que me cuesta un insumo', p: 'insumo costo precio flor rosa material', go: 'compras', mod: 'compras' },
-  { t: 'Registrar un gasto del día', p: 'gasto gasolina bolsas transporte pague', fn: () => openSheet(() => gastoSheet('Otro gasto')), mod: 'gastos' },
-  { t: 'Agregar un gasto fijo', p: 'arriendo servicios fijo mensual contador', fn: () => ACT.gfNew(), mod: 'gastos', own: 1 },
-  { t: 'Pagarle a alguien del equipo', p: 'pagar sueldo empleado nomina debo', go: 'equipo', mod: 'equipo', own: 1 },
-  { t: 'Dar un vale o adelanto', p: 'vale adelanto prestamo empleado', go: 'equipo', mod: 'equipo', own: 1 },
-  { t: 'Agregar a alguien del equipo', p: 'empleado nuevo florista domiciliario secretaria', fn: () => ACT.empNew(), mod: 'equipo', own: 1 },
-  { t: 'Agregar un cliente', p: 'cliente nuevo contacto celular', fn: () => ACT.cliNew(), mod: 'clientes' },
+  { t: 'Registrar un gasto del día', p: 'gasto gasolina bolsas transporte pague', fn: () => openSheet(() => gastoSheet('Otro gasto')), mod: 'gastos', perm: 'gastos' },
+  { t: 'Agregar un gasto fijo', p: 'arriendo servicios fijo mensual contador', fn: () => ACT.gfNew(), mod: 'gastos', perm: 'gastos_fijos' },
+  { t: 'Pagarle a alguien del equipo', p: 'pagar sueldo empleado nomina debo', go: 'equipo', mod: 'equipo', perm: 'equipo' },
+  { t: 'Dar un vale o adelanto', p: 'vale adelanto prestamo empleado', go: 'equipo', mod: 'equipo', perm: 'equipo' },
+  { t: 'Agregar a alguien del equipo', p: 'empleado nuevo florista domiciliario secretaria', fn: () => ACT.empNew(), mod: 'equipo', perm: 'equipo' },
+  { t: 'Agregar un cliente', p: 'cliente nuevo contacto celular', fn: () => ACT.cliNew(), mod: 'clientes', perm: 'clientes' },
   { t: 'A quién le escribo hoy', p: 'cumpleaños aniversario fecha especial whatsapp promocion mensaje', go: 'clientes', mod: 'clientes' },
   { t: 'Cobrar saldos pendientes', p: 'abono saldo debe cobrar pendiente', fn: () => { UI.vf = 'debe'; go('ventas'); }, mod: 'abonos' },
   { t: 'Prender o apagar funciones', p: 'funcionalidades modulos apagar prender quitar', go: 'funciones', own: 1 },
   { t: 'Deshacer un cambio o ver quién cambió algo', p: 'deshacer error equivoque historial volver auditoria quien cambio', go: 'auditoria', own: 1 },
-  { t: 'Agregar un producto o servicio', p: 'producto nuevo agregar crear servicio foto subir', fn: () => { go('productos'); setTimeout(() => ACT.npNuevo(), 60); }, own: 1 },
-  { t: 'Ponerle foto o cambiarle el nombre a un producto', p: 'foto imagen nombre producto cambiar', go: 'productos', own: 1 },
-  { t: 'Ver los productos debajo del precio mínimo', p: 'precio minimo bajo rojo pierdo margen ganancia', fn: () => { UI.pcat = '__bajo'; go('productos'); }, own: 1 },
+  { t: 'Agregar un producto o servicio', p: 'producto nuevo agregar crear servicio foto subir', fn: () => { go('productos'); setTimeout(() => ACT.npNuevo(), 60); }, perm: 'productos' },
+  { t: 'Ponerle foto o cambiarle el nombre a un producto', p: 'foto imagen nombre producto cambiar', go: 'productos', perm: 'productos' },
+  { t: 'Ver los productos debajo del precio mínimo', p: 'precio minimo bajo rojo pierdo margen ganancia', fn: () => { UI.pcat = '__bajo'; go('productos'); }, perm: 'productos' },
   { t: 'Ver mis gastos fijos y del día', p: 'gastos fijos arriendo servicios pagados pendientes', go: 'gastos', mod: 'gastos' },
-  { t: 'Marcar un gasto fijo como pagado', p: 'pague arriendo pagado gasto fijo vencido', fn: () => ACT.gastoFijo(), mod: 'gastos' },
-  { t: 'Contar lo que tengo (inventario)', p: 'inventario contar conteo tengo existencias stock', go: 'inventario', mod: 'inventario', own: 1 },
-  { t: 'Anotar algo que se dañó o se perdió', p: 'dano danado perdi marchito vencio inventario botar', go: 'inventario', mod: 'inventario', own: 1 },
-  { t: 'Ver mi meta del mes', p: 'meta mes gastos cubrir falta resumen ganancia', go: 'como-voy', own: 1 },
-  { t: 'Invitar a alguien a la plataforma', p: 'invitar usuario secretaria empleado correo acceso entrar', fn: () => { go('mi-negocio'); setTimeout(() => { const e = document.getElementById('usuarios'); if (e) e.scrollIntoView({ block: 'start' }); }, 80); }, own: 1 },
+  { t: 'Marcar un gasto fijo como pagado', p: 'pague arriendo pagado gasto fijo vencido', fn: () => ACT.gastoFijo(), mod: 'gastos', perm: 'gastos_fijos' },
+  { t: 'Contar lo que tengo (inventario)', p: 'inventario contar conteo tengo existencias stock', go: 'inventario', mod: 'inventario', perm: 'compras' },
+  { t: 'Anotar algo que se dañó o se perdió', p: 'dano danado perdi marchito vencio inventario botar', go: 'inventario', mod: 'inventario', perm: 'compras' },
+  { t: 'Ver mi meta del mes', p: 'meta mes gastos cubrir falta resumen ganancia', go: 'como-voy', perm: 'resumen' },
+  { t: 'Invitar a alguien (dueño, asistente o empleado)', p: 'invitar usuario asistente secretaria empleado dueño socio correo acceso entrar whatsapp nuevo persona', fn: () => { go('personas'); setTimeout(() => ACT.usNew(), 80); }, own: 1 },
+  { t: 'Cambiar lo que puede hacer alguien', p: 'permisos acceso puede hacer asistente empleado secretaria prender apagar ver ganancias whatsapp ia quitar', go: 'personas', own: 1 },
+  { t: 'Ver quién tiene el WhatsApp conectado', p: 'whatsapp wasap conectado numeros celular ia lidera personas equipo', go: 'personas', own: 1 },
+  { t: 'Quitarle el acceso a alguien', p: 'quitar acceso sacar bloquear usuario empleado asistente', go: 'personas', own: 1 },
   { t: 'Cambiar mi clave o mi correo', p: 'clave contrasena password correo email cambiar olvide', fn: () => ACT.miClave() },
   { t: 'Configurar mi negocio (gastos fijos e inventario)', p: 'configurar empezar pasos inicio negocio arranque', go: 'empezar', own: 1 },
   { t: 'Cambiar la ganancia mínima', p: 'ganancia minima porcentaje 30 margen precios', go: 'mi-negocio', own: 1 },
@@ -1250,17 +1316,18 @@ const ACCIONES = [
 ];
 const SECC_KW = { inicio: 'inicio principal hoy', ventas: 'ventas lista vendido historial', gastos: 'gastos fijos dia plata salio', 'como-voy': 'resumen ganancia meta cuanto gane metricas',
   clientes: 'clientes contactos fechas cumpleanos', productos: 'productos precios recetas catalogo servicios', compras: 'compras insumos proveedores precios compra',
-  inventario: 'inventario existencias conteo stock', equipo: 'equipo empleados pagos nomina', 'mi-negocio': 'mi negocio datos usuarios claves ajustes configuracion',
+  inventario: 'inventario existencias conteo stock', equipo: 'equipo empleados pagos nomina', 'mi-negocio': 'mi negocio datos ajustes configuracion comision precios',
+  personas: 'personas usuarios claves accesos permisos invitar whatsapp wasap ia asistente secretaria empleado dueño socio numero celular equipo',
   funciones: 'funcionalidades funciones prender apagar', auditoria: 'auditoria cambios quien historial deshacer', guia: 'guia ayuda misiones aprender tutorial' };
 function buscarHTML(q) {
   q = sinTilde(q).trim();
   const secc = navFor().filter(n => !n.oculto && (!q || q.split(/\s+/).every(w => sinTilde(n.label + ' ' + (SECC_KW[n.id] || '')).includes(w))));
-  const insL = q.length >= 2 && (on('compras') || on('inventario')) && ROL() === 'duena' ? S.insumos.filter(i => sinTilde(i.nombre).includes(q)).slice(0, 5) : [];
-  const ok = a => (!a.own || ROL() === 'duena') && (!a.mod || on(a.mod)) && (!a.go || navFor().some(n => n.id === a.go));
+  const insL = q.length >= 2 && (on('compras') || on('inventario')) && P('compras') ? S.insumos.filter(i => sinTilde(i.nombre).includes(q)).slice(0, 5) : [];
+  const ok = a => (!a.own || ROL() === 'duena') && (!a.perm || P(a.perm)) && (!a.noAdm || !SES.admin) && (!a.mod || on(a.mod)) && (!a.go || navFor().some(n => n.id === a.go));
   let acc = ACCIONES.filter(ok);
   if (q) acc = acc.filter(a => q.split(/\s+/).every(w => sinTilde(a.t + ' ' + a.p).includes(w)));
   const prods = q.length >= 2 ? filtrarProductos(q, 'todos').slice(0, 6) : [];
-  const clis = q.length >= 2 && on('clientes') && ROL() !== 'florista' ? S.clientes.filter(c => sinTilde(c.nombre).includes(q) || (q.replace(/\D/g, '').length >= 3 && c.telefono.includes(q.replace(/\D/g, '')))).slice(0, 5) : [];
+  const clis = q.length >= 2 && on('clientes') && P('clientes') ? S.clientes.filter(c => sinTilde(c.nombre).includes(q) || (q.replace(/\D/g, '').length >= 3 && c.telefono.includes(q.replace(/\D/g, '')))).slice(0, 5) : [];
   let h = '';
   if (secc.length) h += `<div class="sect">${q ? 'Ir a una sección' : 'Todas las secciones'}</div><div class="chips" style="padding:2px 0">` + secc.map(n => `<button type="button" class="chip" data-act="bSec" data-v="${n.id}">${ic(n.icon, 16)}${esc(n.label)}</button>`).join('') + '</div>';
   if (acc.length) h += `<div class="sect">${q ? 'Lo que puedes hacer' : 'Lo más usado'}</div>` + acc.slice(0, q ? 8 : 12).map(a => `<button type="button" class="sug" data-act="bAcc" data-id="${ACCIONES.indexOf(a)}"><span class="row start" style="gap:10px"><span class="badge ok">Acción</span><b style="text-align:left">${esc(a.t)}</b></span>${ic('chevR', 18)}</button>`).join('');
@@ -1320,7 +1387,7 @@ const SB_KEY = 'sb_publishable_XljNXgBnFSaMGRECcUL5Qg_XA1zfeex';
 let sb = null, CANAL = null, CARGANDO = true, NEG_PUBLICO = null, PANEL_ABIERTO = false;
 const SES = { user: null, negocio: null, rol: 'duena', admin: false, nombre: '', empleadoId: null, lista: [], modo: 'negocio' };
 const ROLES_DB = { dueno: 'duena', secretaria: 'secretaria', empleado: 'florista' };
-const ROL_TXT = { dueno: 'Dueño', secretaria: 'Secretaria', empleado: 'Empleado' };
+const ROL_TXT = { dueno: 'Dueño', secretaria: 'Asistente', empleado: 'Empleado' };
 const subdominio = () => {
   const q = new URLSearchParams(location.search).get('negocio'); if (q) return q;
   const h = location.hostname; const m = h.match(/^([a-z0-9-]+)\.lidereslocales\.com$/i);
@@ -1361,7 +1428,7 @@ const MAP = {
   ventas: { tabla: 'ventas',
     a: r => ({ id: r.id, numero: r.numero, fuente: r.fuente, fecha: fechaApp(r.fecha), items: (r.items || []).map(x => ({ pid: x.pid, nombre: x.nombre, anexo: !!x.anexo, cant: Number(x.cant) || 0, precio: nn(x.precio), costo: nn(x.costo) })),
       clienteId: r.cliente_id, personaId: r.persona_id, empleadoId: r.empleado_id, origen: r.origen, parte: nn(r.parte), pago: r.pago, total: nn(r.total), insumos: nn(r.insumos), manoObra: nn(r.mano_obra),
-      comision: nn(r.comision), quedo: nn(r.quedo), recuperada: !!r.recuperada, sinReceta: !!r.sin_receta, domicilio: nn(r.domicilio), entrega: r.entrega || (nn(r.domicilio) > 0 ? 'domicilio' : null), abono: nn(r.abono), saldo: nn(r.saldo) }),
+      comision: nn(r.comision), quedo: nn(r.quedo), recuperada: !!r.recuperada, sinReceta: !!r.sin_receta, domicilio: nn(r.domicilio), entrega: r.entrega || (nn(r.domicilio) > 0 ? 'domicilio' : null), abono: nn(r.abono), saldo: nn(r.saldo), creadoPor: r.creado_por || null }),
     d: o => ({ id: o.id, fecha: fechaDB(o.fecha), items: o.items.map(x => ({ pid: x.pid, cant: x.cant, precio: x.precio })), cliente_id: o.clienteId || null, persona_id: o.personaId || null,
       empleado_id: o.empleadoId || null, origen: o.origen || 'otro', parte: num(o.parte), pago: o.pago || null, domicilio: num(o.domicilio), entrega: o.entrega || null, abono: o.abono == null ? null : num(o.abono) }) }
 };
@@ -1634,7 +1701,8 @@ async function abrirNegocio(neg) {
     SES.nombre = m ? m.nombre : 'Líderes Locales';
     SES.empleadoId = m && m.rol === 'empleado' ? m.empleado_id : null;
     if (m && m.rol === 'empleado' && !m.empleado_id) SES.rol = 'florista';
-    await cargarDatos();
+    SES.permisos = m ? permisosDe(m.rol, m.permisos) : null;
+    await Promise.all([cargarDatos(), cargarLideraWA()]);
     if (S.negocioDB && S.negocioDB.activo === false && !SES.admin) { await sb.auth.signOut(); CARGANDO = false; pantalla(entrarHTML('Este negocio está suspendido. Habla con Líderes Locales.')); return; }
   } catch (e) { CARGANDO = false; pantalla(`<div class="login-card"><b>No se pudieron traer tus datos</b><span class="small muted">${esc(errTxt(e))}</span><button type="button" class="btn btn-p block" onclick="location.reload()">Intentar de nuevo</button><button type="button" class="btn btn-l block" data-act="salir">Salir</button></div>`); return; }
   CARGANDO = false; D = null; UI.per = { k: 'hoy' };
@@ -1685,57 +1753,117 @@ function camposHTML() {
 /* ---------- Usuarios y claves ---------- */
 let US = null, INVS = null, INVSCARGA = false;
 function cargarInvs() {
-  if (INVSCARGA || !SES.negocio) return; INVSCARGA = true;
+  if (INVSCARGA || !SES.negocio || !sb) { if (!sb) INVS = []; return; } INVSCARGA = true;
   sb.from('invitaciones').select('id,nombre,correo,rol,enviada,vence').eq('negocio_id', SES.negocio.id).is('usada', null).eq('cancelada', false).order('enviada', { ascending: false })
-    .then(({ data, error }) => { INVSCARGA = false; INVS = error ? [] : (data || []); if (route() === 'mi-negocio' && !sheetFn) render(); });
+    .then(({ data, error }) => { INVSCARGA = false; INVS = error ? [] : (data || []); if (route() === 'personas' && !sheetFn) render(); });
 }
 function usuariosHTML() {
   if (!(ROL() === 'duena' || SES.admin)) return '';
   if (INVS === null) cargarInvs();
-  const L = (S.miembros || []).slice().sort((a, b) => (a.rol === 'dueno' ? -1 : 0) - (b.rol === 'dueno' ? -1 : 0));
+  const L = (S.miembros || []).slice().sort((a, b) => (a.rol === 'dueno' ? -1 : 0) - (b.rol === 'dueno' ? -1 : 0) || (b.activo ? 1 : 0) - (a.activo ? 1 : 0));
   const I = INVS || [], ahora = new Date();
-  return `<div class="card" id="usuarios" style="display:flex;flex-direction:column;gap:6px"><span class="row start" style="gap:8px"><b>Usuarios y claves</b>${info('usuarios')}</span>
-    ${L.length ? L.map(m => `<div class="list-item" style="flex-wrap:wrap"><span class="col" style="flex:1;gap:2px;min-width:170px"><b style="font-size:15px">${esc(m.nombre)}${m.user_id === SES.user.id ? ' (tú)' : ''}</b><span class="small muted">Usuario: <b>${esc(m.usuario)}</b> · ${ROL_TXT[m.rol]}${m.correo ? ' · ' + esc(m.correo) : ''}${m.telefono ? ' · WhatsApp ' + phoneFmt(m.telefono.slice(-10)) : ''}${m.activo ? '' : ' · <b style="color:var(--bad)">sin acceso</b>'}</span></span>
-      ${m.rol !== 'dueno' || SES.admin ? `<button type="button" class="btn btn-l xs" data-act="usOpen" data-id="${m.user_id}">${ic('edit', 16)}Cambiar</button>` : ''}</div>`).join('') : '<div class="empty">Todavía no hay usuarios.</div>'}
+  return `<div class="card" id="usuarios" style="display:flex;flex-direction:column;gap:6px"><span class="row start" style="gap:8px"><b>Las personas de tu negocio</b>${info('usuarios')}</span>
+    ${L.length ? L.map(m => { const [wc, wt] = waEstado(m); const yo = SES.user && m.user_id === SES.user.id;
+      return `<div class="list-item" style="flex-wrap:wrap;gap:8px"><span class="col" style="flex:1;gap:3px;min-width:180px"><b style="font-size:15.5px">${esc(m.nombre)}${yo ? ' (tú)' : ''}</b>
+        <span class="small muted">${ROL_TXT[m.rol]} · usuario <b>${esc(m.usuario)}</b>${m.activo ? '' : ' · <b style="color:var(--bad)">sin acceso</b>'}</span>
+        <span class="row start" style="gap:6px;flex-wrap:wrap"><span class="badge ${wc}">${ic('msg', 13, 2.4)}${wt}</span>${m.rol !== 'dueno' ? `<span class="xs muted">Puede: ${esc(permCorto(m.rol, m.permisos))}</span>` : ''}</span></span>
+        <button type="button" class="btn btn-l xs" data-act="usOpen" data-id="${m.user_id}">${ic('edit', 16)}Cambiar</button></div>`; }).join('') : '<div class="empty">Todavía no hay nadie.</div>'}
     ${I.length ? `<div class="small strong" style="margin-top:6px">Invitaciones enviadas</div>
     ${I.map(x => { const vencio = new Date(x.vence) < ahora;
       return `<div class="list-item" style="flex-wrap:wrap"><span class="col" style="flex:1;gap:2px;min-width:170px"><b style="font-size:15px">${esc(x.nombre)}</b><span class="small muted">${esc(x.correo)} · ${ROL_TXT[x.rol]}</span><span class="xs ${vencio ? '' : 'muted'}" style="${vencio ? 'color:var(--bad);font-weight:700' : ''}">${vencio ? 'La invitación venció, mándasela otra vez' : 'Enviada el ' + fCorta(new Date(x.enviada)) + ' · todavía no ha entrado'}</span></span>
       <span class="row" style="gap:6px;flex-wrap:wrap">${UI.invAsk === x.id ? `<button type="button" class="btn btn-d xs" data-act="invCancelarOk" data-id="${x.id}">Sí, cancelar</button><button type="button" class="btn btn-l xs" data-act="invNo">No</button>`
         : `<button type="button" class="btn btn-l xs" data-act="invReenviar" data-id="${x.id}">${ic('mail', 16)}Mandar otra vez</button><button type="button" class="btn btn-l xs" data-act="invCancelar" data-id="${x.id}" aria-label="Cancelar la invitación">${ic('x', 16)}</button>`}</span></div>`; }).join('')}` : ''}
-    <button type="button" class="btn btn-p block" data-act="usNew">${ic('mail', 18)}Invitar a alguien</button>
+    <button type="button" class="btn btn-p block" data-act="usNew" data-tour="usNew">${ic('mail', 18)}Invitar a alguien</button>
     <span class="xs muted">Para entrar van a ${esc((SES.negocio && SES.negocio.subdominio ? SES.negocio.subdominio : 'flores') + '.lidereslocales.com')} y escriben su usuario y su clave. Si se les olvida, tocan «Se me olvidó la clave» y les llega un correo.</span></div>`;
 }
+// Tu propio WhatsApp, arriba de «Personas y WhatsApp»
+function miWaCard() {
+  const y = miMiembro(); if (!y) return '';
+  const [cls, txt] = waEstado(y);
+  return `<div class="card row" data-tour="miWa" style="flex-wrap:wrap;gap:12px"><span class="thumb t-mix">${ic('msg', 22)}</span>
+    <span class="col" style="flex:1;gap:3px;min-width:160px"><b>Tu WhatsApp con Lidera</b><span class="small muted">${y.telefono ? esc(telFmt(y.telefono)) : 'Todavía no lo has puesto'}</span><span class="badge ${cls}" style="align-self:flex-start">${txt}</span></span>
+    <button type="button" class="btn ${y.wa_verificado ? 'btn-l' : 'btn-p'} sm" data-act="miWa">${y.wa_verificado ? 'Ver' : y.telefono ? 'Conectar' : 'Ponerlo'}</button></div>`;
+}
+VIEWS.personas = () => `<h2 class="v-title">Personas y WhatsApp</h2><p class="v-sub">Quién entra a tu negocio, qué puede hacer y con qué WhatsApp le escribe a Lidera.</p>
+  ${guiaSec('personas')}
+  ${miWaCard()}
+  ${funcEstado('whatsapp') !== 'no' && !on('whatsapp') ? `<div class="alert" style="flex-wrap:wrap"><div class="ic t-mix">${ic('msg')}</div><div class="tx" style="min-width:170px"><b>Lidera por WhatsApp está apagado</b><span class="muted">Préndelo en Funcionalidades para que tu equipo le pueda escribir. Los números quedan guardados igual.</span></div><a class="btn btn-l sm" href="#funciones">Ver</a></div>` : ''}
+  ${usuariosHTML()}`;
+// Tipo de persona: tarjetas grandes para tocar
+const TIPOS = [['dueno', 'Dueño', 'Tiene todo prendido: ve la plata, configura e invita.'], ['secretaria', 'Asistente', 'Registra ventas y gastos. Tú le prendes lo demás.'], ['empleado', 'Empleado', 'Registra sus ventas y ve lo que lleva ganado.']];
+const tiposHTML = (sel, act, lista = TIPOS) => `<div class="col" style="gap:8px">${lista.map(([k, t, d]) => `<button type="button" class="optc ${sel === k ? 'on' : ''}" data-act="${act}" data-v="${k}" aria-pressed="${sel === k}"><span class="optc-r"></span><span class="col" style="gap:2px;flex:1"><b>${t}</b><span class="small muted">${d}</span></span></button>`).join('')}</div>`;
+// Lo que va a poder hacer: resumen y, si lo abre, un interruptor por cada cosa
+function permsHTML(rol, p, abierto) {
+  if (rol === 'dueno') return `<div class="card" style="padding:12px 14px;background:var(--soft)"><b style="font-size:15px">Puede hacer todo</b><span class="small muted" style="display:block">En la página y por WhatsApp: ve la plata, configura e invita a otros.</span></div>`;
+  const m = permisosDe(rol, p);
+  return `<div class="card" id="usPerms" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:var(--soft)">
+    <div class="row start" style="gap:6px;flex-wrap:wrap">${PERMS.filter(([k]) => m[k]).map(x => `<span class="badge ok">${ic('check', 13, 3)}${x[3]}</span>`).join('') || '<span class="small muted">Todavía no tiene nada prendido</span>'}</div>
+    <span class="xs muted">Es lo mismo en la página y por WhatsApp.${m.resumen ? '' : ' No ve cuánto gana el negocio.'}</span>
+    ${abierto ? `<div style="display:flex;flex-direction:column">${PERMS.map(([k, t, d]) => `<div class="list-item" style="padding:10px 0;gap:10px"><span class="col" style="flex:1;gap:2px"><b style="font-size:15px">${t}</b><span class="xs muted">${d}</span></span><button type="button" class="toggle ${m[k] ? 'on' : ''}" data-act="usPerm" data-v="${k}" aria-pressed="${!!m[k]}" aria-label="${esc(t)}"><i></i></button></div>`).join('')}</div>`
+    : `<button type="button" class="btn btn-l sm" data-act="usVerPerm" style="align-self:flex-start">${ic('sliders', 16)}Cambiar lo que puede hacer</button>`}
+  </div>`;
+}
+// Estado del WhatsApp de alguien y el enlace para que lo conecte
+function waBloque(u, yo) {
+  if (!u.telefono) return '';
+  const [cls, txt] = waEstado(u);
+  const msj = `Hola ${primerNom(u.nombre)}, para hablar con Lidera por WhatsApp toca este enlace y envía el mensaje que sale escrito: ${waLidera(u)}`;
+  return `<div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px"><span class="row" style="flex-wrap:wrap;gap:8px"><b style="font-size:15px">${esc(telFmt(u.telefono))}</b><span class="badge ${cls}">${txt}</span></span>
+    ${u.wa_verificado ? `<span class="xs muted">Lidera ya le contesta por WhatsApp${on('whatsapp') ? '' : ' cuando prendas «Lidera por WhatsApp»'}.</span>`
+    : !LIDERA_WA ? '<span class="xs muted">Muy pronto: cuando la IA de Lidera esté lista, aquí aparece el botón para conectarlo. El número ya quedó guardado.</span>'
+    : yo ? `<span class="xs muted">Toca el botón, se abre WhatsApp con un mensaje listo y lo envías. Así Lidera sabe que este número es tuyo.</span><a class="btn btn-p block" href="${waLidera(u)}" target="_blank" rel="noopener">${ic('msg', 18)}Conectar mi WhatsApp</a>`
+    : `<span class="xs muted">Falta que lo conecte: mándale el enlace y que envíe el mensaje que le sale escrito.</span><a class="btn btn-p block" href="https://wa.me/${u.telefono}?text=${encodeURIComponent(msj)}" target="_blank" rel="noopener">${ic('msg', 18)}Mandarle el enlace por WhatsApp</a>`}</div>`;
+}
 function usSheet() {
-  const u = US, nuevo = !u.user_id, porCorreo = u.modo !== 'clave';
-  const roles = [...(SES.admin ? [['dueno', 'Dueño']] : []), ['secretaria', 'Secretaria'], ['empleado', 'Empleado']];
+  const u = US, nuevo = !u.user_id, porCorreo = u.modo !== 'clave', yo = !!(SES.user && u.user_id === SES.user.id);
+  const tp = u.telN !== undefined ? [u.telP, u.telN] : telPartes(u.telefono);
   const correoCampo = (lbl, ayuda) => `<div class="field"><label for="usM">${lbl}</label><input class="inp" id="usM" type="email" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(u.correo || '')}" placeholder="nombre@correo.com"><span class="xs muted">${ayuda}</span></div>`;
-  const telCampo = `<div class="field"><label for="usT">Celular para WhatsApp (opcional)</label><input class="inp" id="usT" inputmode="tel" value="${esc(u.telefono ? phoneFmt(String(u.telefono).replace(/\D/g, '').slice(-10)) : '')}" placeholder="300 000 0000"><span class="xs muted">Desde este número podrá registrar ventas por WhatsApp.</span></div>`;
+  const tel = telCampo('usT', tp, `${yo ? 'Tu' : 'Su'} WhatsApp (opcional)`, on('whatsapp') ? 'Con este número va a hablar con Lidera por WhatsApp: mandar audios para registrar ventas y preguntar lo que tenga permitido.' : 'Guárdalo de una vez: cuando prendas «Lidera por WhatsApp» lo va a poder usar.');
+  const empSel = u.rol === 'empleado' ? `<div class="field"><label for="usE">¿Quién es en tu equipo?</label><select class="inp" id="usE"><option value="">Elige…</option>${S.empleados.map(e => `<option value="${e.id}" ${u.empleado_id === e.id ? 'selected' : ''}>${esc(e.nombre)} · ${esc(e.rol)}</option>`).join('')}</select>${S.empleados.length ? '' : '<span class="xs" style="color:var(--bad)">Primero agrégalo en «Equipo».</span>'}</div>` : '';
+  const perms = `<div class="row start" style="gap:8px"><span class="small strong">Lo que va a poder hacer</span>${info('permisos')}</div>${permsHTML(u.rol, u.permisos, u.verPerm)}`;
   if (nuevo) return `<div class="sheet-h"><h3>${porCorreo ? 'Invitar a alguien' : 'Crear usuario y clave'}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
   <div class="field"><label for="usN">Nombre</label><input class="inp" id="usN" value="${esc(u.nombre)}" placeholder="Nombre y apellido"></div>
-  <div class="small strong">¿Qué hace?</div>
-  <div class="chips">${roles.map(([k, l]) => `<button type="button" class="chip ${u.rol === k ? 'on' : ''}" data-act="usRol" data-v="${k}">${l}</button>`).join('')}</div>
-  <p class="small muted" style="margin:0">${u.rol === 'dueno' ? 'Ve todo el negocio, la plata y la configuración.' : u.rol === 'secretaria' ? 'Registra ventas, gastos, compras y clientes. No ve las ganancias.' : 'Registra sus ventas y ve lo que lleva ganado. Nada más.'}</p>
-  ${u.rol === 'empleado' ? `<div class="field"><label for="usE">¿Quién es en tu equipo?</label><select class="inp" id="usE"><option value="">Elige…</option>${S.empleados.map(e => `<option value="${e.id}" ${u.empleado_id === e.id ? 'selected' : ''}>${esc(e.nombre)} · ${esc(e.rol)}</option>`).join('')}</select>${S.empleados.length ? '' : '<span class="xs" style="color:var(--bad)">Primero agrégalo en «Equipo».</span>'}</div>` : ''}
-  ${porCorreo ? correoCampo('Su correo', 'Le llega un correo de Líderes Locales con un botón para que escoja su usuario y su clave.')
+  <div class="small strong">¿Quién es?</div>
+  ${tiposHTML(u.rol, 'usRol')}
+  ${empSel}
+  ${porCorreo ? correoCampo('Su correo', 'Le llega un correo de Lidera con un botón para que escoja su usuario y su clave.')
   : `<div class="field"><label for="usU">Usuario para entrar</label><input class="inp" id="usU" value="${esc(u.usuario)}" autocapitalize="none" placeholder="Ej: paola"><span class="xs muted">Solo letras y números, sin espacios. Es lo que va a escribir para entrar.</span></div>
   <div class="field"><label for="usC">Clave</label><input class="inp" id="usC" type="text" autocomplete="new-password" placeholder="Mínimo 6 letras o números"><span class="xs muted">Es una clave temporal: la primera vez que entre, la plataforma le pide poner su propia clave.</span></div>`}
-  ${telCampo}
+  ${tel}
+  ${perms}
   ${porCorreo ? `<button type="button" class="btn btn-p block" data-act="usInvitar" id="usBtn">${ic('mail', 20)}Enviar invitación</button>
   <button type="button" class="btn btn-l block" data-act="usModo" data-v="clave" style="font-size:14px">¿No tiene correo? Créale tú el usuario y la clave</button>`
   : `<button type="button" class="btn btn-p block" data-act="usSave" id="usBtn">${ic('check', 20, 2.6)}Crear usuario</button>
   <button type="button" class="btn btn-l block" data-act="usModo" data-v="correo" style="font-size:14px">Mejor enviarle una invitación por correo</button>`}`;
-  return `<div class="sheet-h"><h3>Usuario de ${esc(u.nombre)}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
-  <p class="small muted" style="margin:0">Usuario: <b>${esc(u.usuario)}</b> · ${ROL_TXT[u.rol]}</p>
+  return `<div class="sheet-h"><h3>${esc(u.nombre)}${yo ? ' (tú)' : ''}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
+  <p class="small muted" style="margin:0">Usuario: <b>${esc(u.usuario)}</b>${yo ? ' · ' + ROL_TXT[u.rol] : ''}</p>
+  ${yo ? '' : `<div class="small strong">¿Quién es?</div>${tiposHTML(u.rol, 'usRol')}`}
+  ${empSel}
+  ${tel}
+  ${waBloque(u._orig || u, yo)}
+  ${yo ? '' : perms}
   ${correoCampo('Correo (para recuperar la clave)', 'Si se le olvida la clave, le llega un enlace a este correo.')}
-  <div class="field"><label for="usC">Clave nueva</label><input class="inp" id="usC" type="text" autocomplete="new-password" placeholder="Mínimo 6 letras o números"><span class="xs muted">Déjala vacía si no la quieres cambiar. Si la cambias, es temporal: al entrar pone la suya.</span></div>
-  ${telCampo}
+  ${!yo && u._orig && u._orig.rol !== 'dueno' ? `<div class="field"><label for="usC">Clave nueva</label><input class="inp" id="usC" type="text" autocomplete="new-password" placeholder="Mínimo 6 letras o números"><span class="xs muted">Déjala vacía si no la quieres cambiar. Si la cambias, es temporal: al entrar pone la suya.</span></div>` : ''}
   <button type="button" class="btn btn-p block" data-act="usSave" id="usBtn">${ic('check', 20, 2.6)}Guardar</button>
-  ${u.user_id !== SES.user.id ? `<button type="button" class="btn ${u.activo ? 'btn-d' : 'btn-l'} block" data-act="usActivo">${u.activo ? 'Quitarle el acceso' : 'Devolverle el acceso'}</button>` : ''}`;
+  ${!yo ? `<button type="button" class="btn ${u.activo ? 'btn-d' : 'btn-l'} block" data-act="usActivo">${u.activo ? 'Quitarle el acceso' : 'Devolverle el acceso'}</button>` : ''}`;
+}
+// Mi WhatsApp con Lidera (cualquier persona)
+let MIWA = null;
+function miWaSheet() {
+  const y = miMiembro() || {}, tp = MIWA ? [MIWA.p, MIWA.n] : telPartes(y.telefono);
+  return `<div class="sheet-h"><h3>Mi WhatsApp con Lidera</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
+  <p class="small muted" style="margin:0;line-height:1.5">${on('whatsapp') ? 'Desde tu WhatsApp le mandas audios o mensajes a Lidera para registrar ventas y preguntarle cómo va el negocio, según lo que puedas hacer.' : 'Guarda tu número de una vez: cuando se prenda «Lidera por WhatsApp» lo vas a poder usar.'}</p>
+  ${telCampo('mwT', tp, 'Tu número de WhatsApp', '')}
+  <button type="button" class="btn ${y.telefono ? 'btn-l' : 'btn-p'} block" data-act="miWaOk" id="mwBtn">${ic('check', 18, 2.6)}Guardar mi número</button>
+  ${waBloque(y, true)}
+  ${y.telefono && !y.wa_verificado && LIDERA_WA ? `<button type="button" class="btn btn-l block" data-act="miWaRevisar">Ya lo envié, revisar</button>` : ''}
+  ${y.wa_verificado && LIDERA_WA ? `<a class="btn btn-l block" href="https://wa.me/${LIDERA_WA}" target="_blank" rel="noopener">${ic('msg', 18)}Abrir el chat de Lidera</a>` : ''}`;
 }
 // Guarda lo escrito antes de volver a dibujar la ventana
 function usLeer() {
   const g = id => { const el = document.getElementById(id); return el ? el.value : null; };
-  [['usN', 'nombre'], ['usU', 'usuario'], ['usM', 'correo'], ['usT', 'telefono'], ['usE', 'empleado_id']].forEach(([id, k]) => { const v = g(id); if (v !== null) US[k] = v; });
+  [['usN', 'nombre'], ['usU', 'usuario'], ['usM', 'correo'], ['usE', 'empleado_id']].forEach(([id, k]) => { const v = g(id); if (v !== null) US[k] = v; });
+  if (g('usT') !== null) { US.telN = g('usT'); US.telP = g('usTP'); }
 }
 
 /* ---------- Panel de Líderes Locales (administrador) ---------- */
@@ -1825,24 +1953,28 @@ const SB_ACT = {
     const { error } = await sb.from('campos').update({ candado: c.candado }).eq('negocio_id', SES.negocio.id).eq('clave', id);
     if (error) { toast('No se pudo cambiar: ' + errTxt(error)); recargarConfig(); }
   },
-  usNew: () => { US = { nombre: '', usuario: '', correo: '', modo: 'correo', rol: SES.admin && !(S.miembros || []).some(m => m.rol === 'dueno') ? 'dueno' : 'secretaria', empleado_id: '', telefono: '', activo: true }; openSheet(usSheet); },
-  usOpen: (el, id) => { const m = (S.miembros || []).find(x => x.user_id === id); if (!m) return; US = { ...m }; openSheet(usSheet); },
-  usRol: (el, id, v) => { usLeer(); US.rol = v; drawSheet(); },
+  usNew: () => { US = { nombre: '', usuario: '', correo: '', modo: 'correo', rol: SES.admin && !(S.miembros || []).some(m => m.rol === 'dueno') ? 'dueno' : 'secretaria', empleado_id: '', telefono: '', permisos: null, verPerm: false, activo: true }; openSheet(usSheet); },
+  usOpen: (el, id) => { const m = (S.miembros || []).find(x => x.user_id === id); if (!m) return; US = { ...m, permisos: m.permisos ? { ...m.permisos } : null, verPerm: false, _orig: m }; openSheet(usSheet); },
+  usRol: (el, id, v) => { usLeer(); if (US.rol !== v) { US.rol = v; US.permisos = null; } drawSheet(); },
   usModo: (el, id, v) => { usLeer(); US.modo = v; drawSheet(); },
+  usVerPerm: () => { usLeer(); US.verPerm = true; drawSheet(); },
+  usPerm: (el, id, v) => { usLeer(); const m = permisosDe(US.rol, US.permisos); m[v] = !m[v]; US.permisos = m; drawSheet(); },
   usInvitar: async () => {
     usLeer();
-    const nombre = String(US.nombre || '').trim(), correo = String(US.correo || '').trim().toLowerCase(), tel = String(US.telefono || '').replace(/\D/g, ''), emp = US.rol === 'empleado' ? US.empleado_id : '';
+    const nombre = String(US.nombre || '').trim(), correo = String(US.correo || '').trim().toLowerCase(), tel = telLeer('usT'), emp = US.rol === 'empleado' ? US.empleado_id : '';
     if (!nombre) return toast('Escribe el nombre');
     if (!CORREO_OK(correo)) return toast('Revisa el correo, parece que está mal escrito');
     if (US.rol === 'empleado' && !emp) return toast('Elige quién es en tu equipo');
+    if (tel === null) return toast(telMal('usT'));
     const btn = document.getElementById('usBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
     const r = await llamarCuentas({ accion: 'invitar', negocio: SES.negocio.id, nombre, correo, rol: US.rol, telefono: tel || null, empleado_id: emp || null });
+    if (!r.error && r.data && r.data.id && US.rol !== 'dueno') { try { await sb.rpc('invitacion_ajustar', { p_id: r.data.id, p_permisos: permisosDe(US.rol, US.permisos) }); } catch (e) { } }
     INVS = null;
     if (r.error) { if (r.guardada) { closeSheet(); render(); } else if (btn) { btn.disabled = false; btn.innerHTML = `${ic('mail', 20)}Enviar invitación`; } return toast(r.error); }
     closeSheet(); render();
     openSheet(() => `<div class="sheet-h"><h3>Invitación enviada</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
       <p style="margin:0;font-size:16px;line-height:1.5">Le llegó un correo a <b>${esc(correo)}</b> para que ${esc(primerNom(nombre))} escoja su usuario y su clave.</p>
-      <p class="small muted" style="margin:0;line-height:1.5">Dile que busque un correo de Líderes Locales, y si no lo ve, que mire en «Correo no deseado» o «Spam». El enlace sirve por 7 días; si se le vence, aquí le mandas otro.</p>
+      <p class="small muted" style="margin:0;line-height:1.5">Dile que busque un correo de Lidera, y si no lo ve, que mire en «Correo no deseado» o «Spam». El enlace sirve por 7 días; si se le vence, aquí le mandas otro.${tel && on('whatsapp') ? ' Cuando entre, la plataforma le va a pedir que conecte su WhatsApp.' : ''}</p>
       <button type="button" class="btn btn-p block" data-act="close">Entendido</button>`);
   },
   invReenviar: async (el, id) => {
@@ -1859,17 +1991,20 @@ const SB_ACT = {
     INVS = null; render(); toast(error ? 'No se pudo cancelar: ' + errTxt(error) : 'Invitación cancelada: ese enlace ya no sirve');
   },
   usSave: async () => {
+    usLeer();
     const g = id => (document.getElementById(id) || {}).value || '';
-    const clave = g('usC').trim(), tel = g('usT').replace(/\D/g, ''), correo = g('usM').trim().toLowerCase(), btn = document.getElementById('usBtn');
+    const clave = g('usC').trim(), tel = telLeer('usT'), correo = g('usM').trim().toLowerCase(), btn = document.getElementById('usBtn');
+    if (tel === null) return toast(telMal('usT'));
+    if (US.rol === 'empleado' && !US.empleado_id) return toast('Elige quién es en tu equipo');
     if (!US.user_id) {
-      const nombre = g('usN').trim(), usuario = limpiarUsuario(g('usU')), emp = US.rol === 'empleado' ? g('usE') : '';
+      const nombre = g('usN').trim(), usuario = limpiarUsuario(g('usU')), emp = US.rol === 'empleado' ? US.empleado_id : '';
       if (!nombre) return toast('Escribe el nombre'); if (!usuario) return toast('Escribe el usuario, solo letras y números');
       if (clave.length < 6) return toast('La clave debe tener al menos 6 letras o números');
-      if (US.rol === 'empleado' && !emp) return toast('Elige quién es en tu equipo');
       btn.disabled = true;
-      const { error } = await sb.rpc('crear_usuario', { p_negocio: SES.negocio.id, p_nombre: nombre, p_usuario: usuario, p_clave: clave, p_rol: US.rol, p_telefono: tel || null, p_empleado_id: emp || null });
+      const { data: uidNuevo, error } = await sb.rpc('crear_usuario', { p_negocio: SES.negocio.id, p_nombre: nombre, p_usuario: usuario, p_clave: clave, p_rol: US.rol, p_telefono: tel || null, p_empleado_id: emp || null });
       btn.disabled = false;
       if (error) return toast('No se pudo crear: ' + errTxt(error));
+      if (uidNuevo && US.rol !== 'dueno') { try { await sb.from('miembros').update({ permisos: permisosDe(US.rol, US.permisos) }).eq('negocio_id', SES.negocio.id).eq('user_id', uidNuevo); } catch (e) { } }
       await recargarMiembros(); closeSheet(); render();
       openSheet(() => `<div class="sheet-h"><h3>Usuario creado</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
         <p class="small muted" style="margin:0">Mándale estos datos a ${esc(nombre)} para que entre:</p>
@@ -1877,13 +2012,24 @@ const SB_ACT = {
         <button type="button" class="btn btn-p block" data-act="usCopiar">${ic('copy', 18)}Copiar</button>`);
       return;
     }
+    const o = US._orig || {}, yo = !!(SES.user && US.user_id === SES.user.id), cambios = {};
+    if (correo !== String(o.correo || '')) { if (correo && !CORREO_OK(correo)) return toast('Revisa el correo, parece que está mal escrito'); cambios.correo = correo || null; }
+    if ((tel || '') !== String(o.telefono || '')) cambios.telefono = tel || null;
+    if (!yo) {
+      if (US.rol !== o.rol) cambios.rol = US.rol;
+      if (US.rol === 'empleado' && US.empleado_id !== o.empleado_id) cambios.empleado_id = US.empleado_id;
+      const pn = US.rol === 'dueno' ? null : permisosDe(US.rol, US.permisos);
+      if (JSON.stringify(pn) !== JSON.stringify(o.rol === 'dueno' ? null : permisosDe(o.rol, o.permisos)) || cambios.rol) cambios.permisos = pn;
+    }
     btn.disabled = true;
     if (clave) { if (clave.length < 6) { btn.disabled = false; return toast('La clave debe tener al menos 6 letras o números'); } const r = await sb.rpc('cambiar_clave', { p_negocio: SES.negocio.id, p_user: US.user_id, p_clave: clave }); if (r.error) { btn.disabled = false; return toast('No se pudo cambiar la clave: ' + errTxt(r.error)); } }
-    const cambios = {};
-    if (tel !== String(US.telefono || '')) cambios.telefono = tel || null;
-    if (correo !== String(US.correo || '')) { if (correo && !CORREO_OK(correo)) { btn.disabled = false; return toast('Revisa el correo, parece que está mal escrito'); } cambios.correo = correo || null; }
-    if (Object.keys(cambios).length) { const r = await sb.from('miembros').update(cambios).eq('negocio_id', SES.negocio.id).eq('user_id', US.user_id).select(); if (r.error || !r.data || !r.data.length) { btn.disabled = false; return toast('No se pudo guardar: ' + errTxt(r.error || 'sin permiso')); } }
-    await recargarMiembros(); closeSheet(); render(); toast(clave ? 'Clave cambiada' : 'Guardado');
+    if (Object.keys(cambios).length) {
+      const r = yo && Object.keys(cambios).every(k => k === 'telefono')
+        ? await sb.rpc('guardar_mi_whatsapp', { p_negocio: SES.negocio.id, p_telefono: cambios.telefono })
+        : await sb.from('miembros').update(cambios).eq('negocio_id', SES.negocio.id).eq('user_id', US.user_id).select();
+      if (r.error || (Array.isArray(r.data) && !r.data.length)) { btn.disabled = false; return toast('No se pudo guardar: ' + errTxt(r.error || 'sin permiso')); }
+    }
+    await recargarMiembros(); closeSheet(); render(); toast(clave ? 'Clave cambiada' : cambios.telefono && on('whatsapp') ? 'Guardado. Falta que conecte su WhatsApp' : 'Guardado');
   },
   usActivo: async () => {
     const r = await sb.from('miembros').update({ activo: !US.activo }).eq('negocio_id', SES.negocio.id).eq('user_id', US.user_id).select();
@@ -1891,6 +2037,23 @@ const SB_ACT = {
     await recargarMiembros(); closeSheet(); render(); toast(US.activo ? 'Ya no puede entrar' : 'Ya puede entrar otra vez');
   },
   usCopiar: () => copyText(document.getElementById('usTxt').textContent),
+  miWa: () => { MIWA = null; openSheet(miWaSheet); },
+  waNo: () => { try { sessionStorage.setItem('mno-wa-no', '1'); } catch (e) { } render(); },
+  miWaOk: async () => {
+    const t = telLeer('mwT'); if (t === null) return toast(telMal('mwT'));
+    const btn = document.getElementById('mwBtn'); if (btn) btn.disabled = true;
+    const { data, error } = await sb.rpc('guardar_mi_whatsapp', { p_negocio: SES.negocio.id, p_telefono: t || null });
+    if (btn) btn.disabled = false;
+    if (error) { MIWA = { p: (document.getElementById('mwTP') || {}).value, n: (document.getElementById('mwT') || {}).value }; return toast('No se pudo guardar: ' + errTxt(error)); }
+    const y = miMiembro(); if (y && data) Object.assign(y, { telefono: data.telefono, wa_codigo: data.wa_codigo, wa_verificado: data.wa_verificado });
+    MIWA = null; drawSheet(); render();
+    toast(!t ? 'Listo, quitaste tu WhatsApp' : LIDERA_WA && !(y && y.wa_verificado) ? 'Guardado. Ahora toca «Conectar mi WhatsApp»' : 'Listo, tu número quedó guardado');
+  },
+  miWaRevisar: async () => {
+    await recargarMiembros(); drawSheet(); render();
+    const y = miMiembro();
+    toast(y && y.wa_verificado ? 'Listo, tu WhatsApp quedó conectado' : 'Todavía no nos llega el mensaje. Espera un momento y vuelve a revisar.');
+  },
   histAsk: (el, id) => { UI.undoAsk = String(id); render(); },
   histNo: () => { UI.undoAsk = null; render(); },
   histOk: async (el, id) => {
@@ -1932,7 +2095,7 @@ async function abrirPanel() {
   try { sessionStorage.removeItem('mno-negocio'); } catch (e) { }
   pantalla('');
   if (!PANEL_NAV.some(n => n.id === (location.hash || '').replace('#', ''))) location.hash = 'negocios';
-  RESUMEN = null; render(); await cargarResumen(); render();
+  RESUMEN = null; render(); await Promise.all([cargarResumen(), cargarLideraWA()]); render();
 }
 function renderPanelShell() {
   const r = panelRuta();
@@ -1976,7 +2139,7 @@ VIEWS.negocios = () => {
   const F = (L || []).filter(n => !q || sinTilde(n.nombre + ' ' + (n.subdominio || '') + ' ' + (n.ciudad || '')).includes(q));
   const act = (L || []).filter(n => n.activo).length;
   return `<div class="row" style="flex-wrap:wrap"><h2 class="v-title">Negocios</h2><a class="btn btn-p sm" href="#crear">${ic('add', 18, 2.6)}Crear negocio</a></div>
-  <p class="v-sub">Aquí ves todos los negocios. «Invitar» le manda un correo al dueño o a su secretaria para que escojan su usuario y su clave. «Entrar a soporte» abre el negocio como lo ve el dueño.</p>
+  <p class="v-sub">Aquí ves todos los negocios. «Invitar» le manda un correo al dueño o a su asistente para que escojan su usuario y su clave. «Entrar a soporte» abre el negocio como lo ve el dueño.</p>
   ${L === null ? '<div class="card empty">Cargando negocios…</div>' : `
   <div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
     <div class="kpi"><span class="lab">Negocios activos</span><b>${act}</b></div>
@@ -1984,7 +2147,11 @@ VIEWS.negocios = () => {
     <div class="kpi"><span class="lab">Con ventas este mes</span><b>${L.filter(n => n.ventas_30 > 0).length}</b></div>
   </div>
   ${L.length > 3 ? `<input class="inp" id="pq2" data-in="pq2" value="${esc(UI.pq2 || '')}" placeholder="Buscar por nombre, dirección o ciudad" autocomplete="off" aria-label="Buscar negocio">` : ''}
-  ${F.length ? F.map(negocioCard).join('') : `<div class="card empty">${L.length ? 'No encontramos ese negocio.' : 'Todavía no hay negocios. Crea el primero.'}</div>`}`}`;
+  ${F.length ? F.map(negocioCard).join('') : `<div class="card empty">${L.length ? 'No encontramos ese negocio.' : 'Todavía no hay negocios. Crea el primero.'}</div>`}`}
+  <div class="card" style="display:flex;flex-direction:column;gap:10px"><span class="row start" style="gap:8px"><span class="thumb t-mix">${ic('msg', 20)}</span><b>WhatsApp de Lidera (la IA)</b></span>
+    <span class="small muted">El número al que le escriben los dueños y su equipo para hablar con la IA. Mientras esté vacío, en las plataformas sale «Muy pronto» y los números quedan guardados.</span>
+    ${telCampo('lwT', telPartes(LIDERA_WA), 'Número de WhatsApp de Lidera', '')}
+    <button type="button" class="btn btn-p sm" data-act="lideraWaOk" style="align-self:flex-start">${ic('check', 18, 2.6)}Guardar</button></div>`;
 };
 VIEWS.crear = () => {
   const sub = slugDe(NN.sub || NN.nombre);
@@ -2014,17 +2181,17 @@ function cargarPinv() {
   sb.from('invitaciones').select('id,nombre,correo,rol,enviada,vence').eq('negocio_id', PINV.neg).is('usada', null).eq('cancelada', false).order('enviada', { ascending: false })
     .then(({ data }) => { if (!PINV) return; PINV.lista = data || []; if (sheetFn === pinvSheet) { pinvLeer(); drawSheet(); } });
 }
-function pinvLeer() { if (!PINV) return; [['piN', 'nombre'], ['piM', 'correo'], ['piT', 'telefono']].forEach(([id, k]) => { const el = document.getElementById(id); if (el) PINV[k] = el.value; }); }
+function pinvLeer() { if (!PINV) return; [['piN', 'nombre'], ['piM', 'correo']].forEach(([id, k]) => { const el = document.getElementById(id); if (el) PINV[k] = el.value; }); const t = document.getElementById('piT'); if (t) { PINV.telN = t.value; PINV.telP = (document.getElementById('piTP') || {}).value; } }
 function pinvSheet() {
   const p = PINV, n = (RESUMEN || []).find(x => x.id === p.neg) || {}, ahora = new Date();
   return `<div class="sheet-h"><h3>Invitar a ${esc(n.nombre || 'este negocio')}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
   <p class="small muted" style="margin:0">Le llega un correo de Líderes Locales con un botón para que escoja su usuario y su clave. Va a entrar por ${esc((n.subdominio || n.slug || '') + '.lidereslocales.com')}.</p>
   <div class="field"><label for="piN">Nombre</label><input class="inp" id="piN" value="${esc(p.nombre)}" placeholder="Nombre y apellido"></div>
   <div class="small strong">¿Qué hace?</div>
-  <div class="chips">${[['dueno', 'Dueño'], ['secretaria', 'Secretaria']].map(([k, l]) => `<button type="button" class="chip ${p.rol === k ? 'on' : ''}" data-act="pinvRol" data-v="${k}">${l}</button>`).join('')}</div>
-  <p class="small muted" style="margin:0">${p.rol === 'dueno' ? 'Ve todo el negocio, la plata y la configuración, y puede invitar a su equipo.' : 'Registra ventas, gastos, compras y clientes. No ve las ganancias.'} Los empleados los invita el dueño desde su plataforma.</p>
+  ${tiposHTML(p.rol, 'pinvRol', TIPOS.slice(0, 2))}
+  <p class="small muted" style="margin:0">Los empleados los invita el dueño desde su plataforma, y ahí mismo decide qué puede hacer cada uno.</p>
   <div class="field"><label for="piM">Su correo</label><input class="inp" id="piM" type="email" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(p.correo)}" placeholder="nombre@correo.com"></div>
-  <div class="field"><label for="piT">Celular para WhatsApp (opcional)</label><input class="inp" id="piT" inputmode="tel" value="${esc(p.telefono)}" placeholder="300 000 0000"><span class="xs muted">Desde este número podrá registrar ventas por WhatsApp.</span></div>
+  ${telCampo('piT', p.telN !== undefined ? [p.telP, p.telN] : telPartes(p.telefono), 'Su WhatsApp (opcional)', 'Con este número va a hablar con Lidera por WhatsApp. Cuando entre, la plataforma le pide conectarlo.')}
   <button type="button" class="btn btn-p block" data-act="pinvOk" id="piBtn">${ic('mail', 20)}Enviar invitación</button>
   ${p.lista === null ? '<span class="xs muted">Buscando invitaciones pendientes…</span>' : p.lista.length ? `<div class="sect" style="margin:6px 0 0">Invitaciones que todavía no se usan</div>
   ${p.lista.map(x => { const vencio = new Date(x.vence) < ahora;
@@ -2034,15 +2201,22 @@ function pinvSheet() {
 const PINV_ACT = {
   pinvOpen: (el, id) => { const n = (RESUMEN || []).find(x => x.id === id); PINV = { neg: id, nombre: '', correo: '', telefono: '', rol: n && n.tiene_dueno ? 'secretaria' : 'dueno', lista: null }; openSheet(pinvSheet); cargarPinv(); },
   pinvRol: (el, id, v) => { pinvLeer(); PINV.rol = v; drawSheet(); },
+  lideraWaOk: async () => {
+    const t = telLeer('lwT'); if (t === null) return toast(telMal('lwT'));
+    const { error } = await sb.from('lidera_config').upsert({ clave: 'whatsapp', valor: t || null, actualizado: new Date().toISOString() });
+    if (error) return toast('No se pudo guardar: ' + errTxt(error));
+    LIDERA_WA = t || null; render(); toast(t ? 'Listo: ya pueden conectar su WhatsApp con Lidera' : 'Quitaste el número de Lidera');
+  },
   pinvOk: async () => {
     pinvLeer();
-    const nombre = PINV.nombre.trim(), correo = PINV.correo.trim().toLowerCase(), tel = PINV.telefono.replace(/\D/g, '');
+    const nombre = PINV.nombre.trim(), correo = PINV.correo.trim().toLowerCase(), tel = telLeer('piT');
     if (!nombre) return toast('Escribe el nombre');
     if (!CORREO_OK(correo)) return toast('Revisa el correo, parece que está mal escrito');
+    if (tel === null) return toast(telMal('piT'));
     const btn = document.getElementById('piBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
     const r = await llamarCuentas({ accion: 'invitar', negocio: PINV.neg, nombre, correo, rol: PINV.rol, telefono: tel || null });
     if (r.error) { if (btn) { btn.disabled = false; btn.innerHTML = `${ic('mail', 20)}Enviar invitación`; } if (r.guardada) cargarPinv(); return toast(r.error); }
-    Object.assign(PINV, { nombre: '', correo: '', telefono: '', lista: null }); drawSheet(); cargarPinv();
+    Object.assign(PINV, { nombre: '', correo: '', telefono: '', telN: undefined, telP: undefined, lista: null }); drawSheet(); cargarPinv();
     toast(`Listo, le llegó la invitación a ${correo}`);
   },
   pinvReenviar: async (el, id) => {
@@ -2199,7 +2373,7 @@ const EXT_ACT = {
   pePleg: () => { S.guia.plegado = !S.guia.plegado; save(); render(); },
   buscar: () => { openSheet(buscarSheet); setTimeout(() => { const i = document.getElementById('bq'); if (i) i.focus(); }, 60); },
   bAcc: (el, id) => { const a = ACCIONES[Number(id)]; closeSheet(); if (a.fn) a.fn(); else go(a.go); },
-  bProd: (el, id) => { closeSheet(); if (ROL() === 'duena') ACT.prodOpen(null, id); else ACT.venderEste(null, id); },
+  bProd: (el, id) => { closeSheet(); if (P('productos')) ACT.prodOpen(null, id); else ACT.venderEste(null, id); },
   bCli: (el, id) => { closeSheet(); ACT.cliOpen(null, id); },
   bSec: (el, id, v) => { closeSheet(); go(v); },
   bIns: (el, id) => { closeSheet(); go(on('compras') ? 'compras' : 'inventario'); const i = insumo(id); if (i && on('compras')) setTimeout(() => openSheet(() => insSheet(i)), 60); },
@@ -2355,7 +2529,7 @@ function footHTML() {
     return `<div class="col" style="flex:1;gap:0"><span class="small muted">${n} producto${n === 1 ? '' : 's'}</span><b class="num" style="font-size:20px">${money(k.total)}</b></div><button type="button" class="btn btn-p" data-act="vPaso" data-v="2" data-tour="vnext">Siguiente${ic('chevR', 20, 2.6)}</button>`;
   }
   if (!k.its.length) return `<span class="small muted" style="flex:1">Toca un producto para empezar</span><button type="button" class="btn btn-p" disabled>Guardar venta</button>`;
-  if (ROL() !== 'duena') return `<div class="col" style="flex:1;gap:0"><span class="small muted">Total</span><b class="num" style="font-size:20px">${money(k.total)}</b></div><button type="button" class="btn btn-p" data-act="vSave">${ic('check', 20, 2.6)}${D.editId ? 'Guardar cambios' : 'Guardar venta'}</button>`;
+  if (!P('resumen')) return `<div class="col" style="flex:1;gap:0"><span class="small muted">Total</span><b class="num" style="font-size:20px">${money(k.total)}</b></div><button type="button" class="btn btn-p" data-act="vSave">${ic('check', 20, 2.6)}${D.editId ? 'Guardar cambios' : 'Guardar venta'}</button>`;
   const sr = k.its.some(x => sinReceta(prod(x.pid)));
   const lim = k.quedo;
   const prods = k.total - k.dom;
@@ -2403,7 +2577,7 @@ function saveVenta() {
   render();
 }
 function ventaGuardadaHTML(v, nuevoCli, perNueva) {
-  const c = cliente(v.clienteId); const own = ROL() === 'duena';
+  const c = cliente(v.clienteId); const own = P('resumen');
   const per = c && v.personaId ? c.personas.find(p => p.id === v.personaId) : null;
   const lim = v.quedo;
   const [cls, lab] = v.sinReceta ? ['warn', 'Falta la receta'] : semaforo(pct(lim, v.total));
@@ -2432,7 +2606,7 @@ function ventaGuardadaHTML(v, nuevoCli, perNueva) {
 
 /* ---------- Ventas ---------- */
 VIEWS.ventas = () => {
-  const own = ROL() === 'duena';
+  const own = P('resumen');
   const [a, b] = perRango();
   let vs = ventasEn(a, b); if (ROL() === 'florista') vs = vs.filter(v => v.empleadoId === S.rol);
   if (UI.vf === 'debe') vs = S.ventas.filter(v => v.saldo > 0);
@@ -2454,7 +2628,7 @@ VIEWS.ventas = () => {
 
 /* ---------- Productos ---------- */
 VIEWS.productos = () => {
-  const own = ROL() === 'duena';
+  const own = P('productos');
   const L = filtrarProductos(UI.pq, UI.pcat);
   const sr = S.productos.filter(p => sinReceta(p)).length;
   const pend = (S.cambiosPrecio || []).length;
@@ -2489,12 +2663,12 @@ function catChips(cur, act) {
   return [['todos', 'Todos'], ...present].map(([k, l]) => `<button type="button" class="chip ${(cur || 'todos') === k ? 'on' : ''}" data-act="${act}" data-v="${k}">${l}</button>`).join('');
 }
 function pgridHTML(L) {
-  const own = ROL() === 'duena';
+  const own = P('productos');
   return L.map(p => { const [cls, lab] = semP(p); const m = margen(p); const tag = own ? 'button' : 'div';
     return `<${tag} ${own ? `type="button" class="ptile" data-act="prodOpen" data-id="${p.id}"` : 'class="ptile"'}>${p.foto ? `<img src="${p.foto}" alt="${esc(p.nombre)}" loading="lazy">` : fotoVacia(p)}${p.code ? `<span class="code">${p.code}</span>` : ''}<b style="font-size:14px;line-height:1.25">${esc(p.nombre)}</b><span class="num strong pr">${money(p.precio)}</span>${own ? `<span class="badge ${cls}" style="align-self:flex-start;margin:0 4px;white-space:normal;max-width:calc(100% - 8px);line-height:1.25">${cls === 'neu' ? lab : `${m.plimpio}% · ${lab}`}</span>${(cls === 'warn' || cls === 'bad') && !m.imposible ? `<span class="xs" style="color:#7A1A13;font-weight:700;padding:0 4px">Mínimo ${money(m.minimo)}</span>` : ''}${p.estimada ? '<span class="xs" style="color:var(--warn);font-weight:700;padding:0 4px">Receta estimada</span>' : ''}` : ''}</${tag}>`; }).join('') || '<div class="empty" style="grid-column:1/-1">No encontramos productos con esa búsqueda.</div>';
 }
 function vgridHTML() {
-  if (!S.productos.length) return `<div class="card empty" style="grid-column:1/-1;display:flex;flex-direction:column;align-items:center;gap:10px">Todavía no hay productos para vender.${ROL() === 'duena' ? `<a class="btn btn-p sm" href="#productos">${ic('add', 18, 2.6)}Agregar productos</a>` : ' Pídele a la dueña que los agregue.'}</div>`;
+  if (!S.productos.length) return `<div class="card empty" style="grid-column:1/-1;display:flex;flex-direction:column;align-items:center;gap:10px">Todavía no hay productos para vender.${P('productos') ? `<a class="btn btn-p sm" href="#productos">${ic('add', 18, 2.6)}Agregar productos</a>` : ' Pídele a la dueña que los agregue.'}</div>`;
   const L = filtrarProductos(UI.vps, UI.vcat).filter(p => !p.anexo);
   return L.map(p => { const q = D && D.items[p.id] ? D.items[p.id].cant : 0;
     return `<button type="button" class="ptile ${q ? 'on' : ''}" data-act="vAdd" data-id="${p.id}">${q ? `<span class="qty">${q}</span>` : ''}${p.foto ? `<img src="${p.foto}" alt="${esc(p.nombre)}" loading="lazy">` : fotoVacia(p)}${p.code ? `<span class="code">${p.code}</span>` : ''}<b style="font-size:14px;line-height:1.25">${esc(p.nombre)}</b><span class="num small muted pr">${money(p.precio)}</span></button>`; }).join('') || '<div class="empty" style="grid-column:1/-1">No encontramos productos con esa búsqueda.</div>';
@@ -2514,7 +2688,7 @@ function cambiosSheet() {
   <p class="small muted" style="margin:0;line-height:1.5">Estos son los precios que cambiaste y que todavía hay que pasar a ${esc(S.config.web || 'tu página web')}. Líderes Locales los ve y los actualiza.</p>
   <div class="card" style="padding:4px 16px">${L.map(c => { const p = prod(c.pid); return `<div class="list-item">${p && p.foto ? `<img src="${p.foto}" alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex:none">` : ''}<span class="col" style="flex:1"><b style="font-size:15px">${esc(c.code)} · ${esc(c.nombre)}</b><span class="small muted">${fLarga(parseD(c.fecha))}</span></span><span class="col" style="align-items:flex-end">${c.nuevo ? '<span class="badge ok">Producto nuevo</span>' : `<span class="small muted num" style="text-decoration:line-through">${money(c.antes)}</span>`}<b class="num">${money(c.ahora)}</b></span></div>`; }).join('')}</div>
   <button type="button" class="btn btn-l block" data-act="copyCambios">${ic('copy', 18)}Copiar la lista</button>
-  ${L.length && (ROL() === 'duena') ? `<button type="button" class="btn btn-l block" data-act="cambiosPasados">${ic('check', 18, 2.6)}Ya los pasé a la página web</button>` : ''}`;
+  ${L.length && P('productos') ? `<button type="button" class="btn btn-l block" data-act="cambiosPasados">${ic('check', 18, 2.6)}Ya los pasé a la página web</button>` : ''}`;
 }
 let PD = null;
 function prodSheet() {
@@ -2649,30 +2823,30 @@ VIEWS.gastos = () => {
   const totalMes = S.gastosFijos.reduce((s, g) => s + mensualEq(g), 0);
   const [ga, gb] = perRango();
   const recientes = S.gastos.filter(g => g.fecha >= iso(ga) && g.fecha <= iso(gb) + 'T99').sort((a, b) => a.fecha < b.fecha ? 1 : -1);
-  const own = ROL() === 'duena';
+  const own = P('gastos_fijos'), dia = P('gastos');
   const sumT = t => recientes.filter(g => g.tipo === t).reduce((s, g) => s + num(g.monto), 0);
   const sug = FIJOS_SUG.filter(n => !S.gastosFijos.some(g => sinTilde(g.nombre).includes(sinTilde(n.split(' ')[0]))));
   return `<h2 class="v-title">Gastos</h2><p class="v-sub">Toda la plata que sale del negocio y que no es un insumo.</p>
   ${guiaSec('gastos')}
-  ${own ? `<div class="alert"><div class="ic t-mix">${ic('chart')}</div><div class="tx"><b>${pctGastos().modo === 'auto' ? `Tus gastos se llevan el ${gPctTxt()} de lo que vendes` : 'Tus gastos y tu meta del mes'}</b><span class="muted">${pctGastos().modo === 'auto' && pctGastos().pct >= 0.35 ? 'Es alto: de cada $100 que vendes, más de $35 se van en gastos. ' : ''}Con lo que te dejan tus ventas pagas estos gastos. En «Resumen» ves cuánto llevas y cuánto te queda de ganancia.</span></div><a class="btn btn-l sm" href="#como-voy">Ver meta</a></div>` : ''}
-  <div class="row"><div class="col" style="gap:2px"><div class="sect" style="margin:0">Gastos del día</div><span class="small muted">Cambian según cómo trabajes. Anótalos el día que pasan, con un toque.</span></div>${info('fijosVar')}</div>
+  ${P('resumen') ? `<div class="alert"><div class="ic t-mix">${ic('chart')}</div><div class="tx"><b>${pctGastos().modo === 'auto' ? `Tus gastos se llevan el ${gPctTxt()} de lo que vendes` : 'Tus gastos y tu meta del mes'}</b><span class="muted">${pctGastos().modo === 'auto' && pctGastos().pct >= 0.35 ? 'Es alto: de cada $100 que vendes, más de $35 se van en gastos. ' : ''}Con lo que te dejan tus ventas pagas estos gastos. En «Resumen» ves cuánto llevas y cuánto te queda de ganancia.</span></div><a class="btn btn-l sm" href="#como-voy">Ver meta</a></div>` : ''}
+  ${dia ? `<div class="row"><div class="col" style="gap:2px"><div class="sect" style="margin:0">Gastos del día</div><span class="small muted">Cambian según cómo trabajes. Anótalos el día que pasan, con un toque.</span></div>${info('fijosVar')}</div>
   <div data-tour="quick" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
-    ${on('compras') ? `<a class="card" href="#compras" style="display:flex;flex-direction:column;align-items:center;gap:6px;text-decoration:none;color:var(--ink);font-weight:800;font-size:14.5px;text-align:center"><span class="thumb t-rose">${ic('box', 24)}</span>Compra de insumos<span class="xs muted" style="font-weight:600">Actualiza lo que te cuesta cada producto</span></a>` : ''}
+    ${on('compras') && P('compras') ? `<a class="card" href="#compras" style="display:flex;flex-direction:column;align-items:center;gap:6px;text-decoration:none;color:var(--ink);font-weight:800;font-size:14.5px;text-align:center"><span class="thumb t-rose">${ic('box', 24)}</span>Compra de insumos<span class="xs muted" style="font-weight:600">Actualiza lo que te cuesta cada producto</span></a>` : ''}
     ${CATS_GASTO.map(([c, i, t, d]) => `<button type="button" class="card" data-act="gastoNew" data-v="${c}" style="display:flex;flex-direction:column;align-items:center;gap:6px;font-weight:800;font-size:14.5px;text-align:center"><span class="thumb ${t}">${ic(i, 24)}</span>${c}<span class="xs muted" style="font-weight:600">${d}</span></button>`).join('')}
-  </div>
-  <div class="row"><div class="col" style="gap:2px"><div class="sect" style="margin:0">Gastos fijos</div><span class="small muted">Los pagas igual aunque no vendas. Los agregas una sola vez y te avisamos antes de que venzan.</span></div>${own ? `<button type="button" class="btn btn-l xs" data-act="gfNew" data-tour="gfNew">${ic('add', 16, 2.4)}Agregar</button>` : ''}</div>
+  </div>` : ''}
+  ${own ? `<div class="row"><div class="col" style="gap:2px"><div class="sect" style="margin:0">Gastos fijos</div><span class="small muted">Los pagas igual aunque no vendas. Los agregas una sola vez y te avisamos antes de que venzan.</span></div>${own ? `<button type="button" class="btn btn-l xs" data-act="gfNew" data-tour="gfNew">${ic('add', 16, 2.4)}Agregar</button>` : ''}</div>
   ${own && sug.length ? `<div class="chips" style="flex-wrap:wrap"><span class="xs muted" style="width:100%">Toca para agregar los que tengas:</span>${sug.map(n => `<button type="button" class="chip" data-act="gfNew" data-v="${esc(n)}">+ ${esc(n)}</button>`).join('')}</div>` : ''}
   <div class="card" style="background:#F3F7FD;border-color:#DCE7FB"><div class="row"><span class="row start" style="gap:8px"><b>Al mes suman</b>${info('gastosfijos')}</span><b class="num" style="font-size:22px">${money(totalMes)}</b></div>${on('equipo') ? `<span class="small muted">Los sueldos no se anotan aquí: van en <a href="#equipo" style="color:inherit;font-weight:700">Equipo</a>${sueldosFijosMes() ? `, y los fijos suman ${money(sueldosFijosMes())} al mes` : ''}.</span>` : ''}</div>
   ${fijos.length ? '' : '<div class="card empty">Todavía no tienes gastos fijos.</div>'}${fijos.map(({ g, c }) => { const st = c.pagado ? ['ok', 'Pagado'] : c.diff < 0 ? ['bad', `Vencido hace ${-c.diff} día${c.diff < -1 ? 's' : ''}`] : c.diff === 0 ? ['bad', 'Vence hoy'] : c.diff <= 5 ? ['warn', `Vence en ${c.diff} día${c.diff > 1 ? 's' : ''}`] : ['neu', `Vence el ${fCorta(c.due)}`];
     return `<div class="alert" style="${st[0] === 'warn' || st[0] === 'bad' ? 'border:2px solid #E9C46A' : ''};flex-wrap:wrap"><div class="tx"><b>${esc(g.nombre)} · <span class="num">${money(g.valor)}</span></b><span class="muted">${frecTxt(g)}</span></div>
     <span class="badge ${st[0]}">${st[1]}</span>
     ${c.pagado ? `<button type="button" class="btn btn-l xs" data-act="gfUnpay" data-id="${g.id}">Deshacer</button>` : `<button type="button" class="btn btn-p sm" data-act="gfPay" data-id="${g.id}">Pagado</button>`}
-    ${own ? `<button type="button" class="btn btn-l xs" data-act="gfEdit" data-id="${g.id}" aria-label="Editar ${esc(g.nombre)}">${ic('edit', 16)}</button>` : ''}</div>`; }).join('')}
-  <div class="sect">Lo que anotaste en estos días</div>
+    ${own ? `<button type="button" class="btn btn-l xs" data-act="gfEdit" data-id="${g.id}" aria-label="Editar ${esc(g.nombre)}">${ic('edit', 16)}</button>` : ''}</div>`; }).join('')}` : ''}
+  ${dia ? `<div class="sect">Lo que anotaste en estos días</div>
   ${periodoBar()}
   <div class="card" style="padding:4px 16px"><div class="line"><span class="row start" style="gap:8px">Gastos del día ${info('otros')}</span><b class="num">${money(sumT('variable'))}</b></div>${sumT('compra') ? `<div class="line"><span>Compras de insumos</span><b class="num">${money(sumT('compra'))}</b></div>` : ''}${sumT('equipo') ? `<div class="line"><span>Pagos al equipo</span><b class="num">${money(sumT('equipo'))}</b></div>` : ''}</div>
   <div class="card" style="padding:4px 16px">${recientes.length ? '' : '<div class="empty">No hay gastos en estos días.</div>'}${recientes.map(g => `<div class="list-item"><span class="col" style="flex:1"><b style="font-size:15px">${esc(g.nota || g.categoria)}</b><span class="small muted">${fLarga(parseD(g.fecha))} · ${esc(g.categoria)}${g.tipo === 'variable' ? '' : g.tipo === 'compra' ? ' · compra' : g.tipo === 'equipo' ? ' · equipo' : ''}</span></span><b class="num">${money(g.monto)}</b>
-    <button type="button" class="btn btn-l xs" data-act="delGasto" data-id="${g.id}" aria-label="Borrar gasto">${ic('trash', 16)}</button></div>`).join('')}</div>`;
+    <button type="button" class="btn btn-l xs" data-act="delGasto" data-id="${g.id}" aria-label="Borrar gasto">${ic('trash', 16)}</button></div>`).join('')}</div>` : ''}`;
 };
 function gastoSheet(cat) {
   return `<div class="sheet-h"><h3>${esc(cat)}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
@@ -2761,7 +2935,7 @@ function empEditSheet() {
   ${e.tipo === 'dia' ? `<div class="fgrid">${f('valorDia', 'Valor por día', e.valorDia)}</div>` : ''}
   ${e.tipo === 'producto' ? `<p class="small muted" style="margin:0">Se le paga lo que diga cada producto en «Mano de obra», por ejemplo ${money(8000)} por un Ramo Pasión. Se suma solo cuando lo eligen en «¿Quién lo hizo?», que se va a preguntar en cada venta.</p>` : ''}
   ${e.tipo === 'mixto' ? `<div class="fgrid">${f('base', 'Base mensual', e.base)}${f('valorProducto', 'Valor por producto', e.valorProducto)}<div class="field"><label for="ed-diaPago2">Día de pago</label><input class="inp num" id="ed-diaPago2" data-in="edT" data-k="diaPago" inputmode="numeric" value="${e.diaPago || 30}"></div></div>` : ''}
-  <div class="small" data-tour="edAcceso" style="background:var(--soft);border-radius:12px;padding:10px 12px;line-height:1.5"><b>¿Va a entrar a la plataforma?</b> Invítalo con su correo en «Mi negocio → Usuarios y claves». Nunca va a ver la ganancia del negocio.</div>
+  <div class="small" data-tour="edAcceso" style="background:var(--soft);border-radius:12px;padding:10px 12px;line-height:1.5"><b>¿Va a entrar a la plataforma?</b> Invítalo en «Personas y WhatsApp» con su correo y su WhatsApp. Ahí decides qué puede hacer; si no le prendes «Ver cuánto se gana», no ve la ganancia del negocio.</div>
   <div class="row" style="gap:10px"><button type="button" class="btn btn-p" style="flex:2" data-act="edSave" data-tour="edSave">${ic('check', 20, 2.6)}Guardar</button>${!e.isNew ? `<button type="button" class="btn btn-d" style="flex:1" data-act="edDel">Quitar</button>` : ''}</div>`;
 }
 
@@ -2774,7 +2948,7 @@ VIEWS.clientes = () => {
   const q = UI.cq.trim().toLowerCase();
   const lista = S.clientes.map(c => { const vs = S.ventas.filter(v => v.clienteId === c.id); return { c, n: vs.length, tot: vs.reduce((s, v) => s + v.total, 0), last: vs.length ? vs[vs.length - 1].fecha : '' }; })
     .filter(x => !q || x.c.nombre.toLowerCase().includes(q) || x.c.telefono.includes(q.replace(/\D/g, '') || '@@')).sort((a, b) => a.last < b.last ? 1 : -1);
-  const own = ROL() === 'duena';
+  const own = P('resumen');
   return `<h2 class="v-title">Clientes</h2><p class="v-sub">Se guardan solos con cada venta.</p>
   ${guiaSec('clientes')}
   ${own ? `<div class="card rose"><div class="row"><span class="lab">Este mes recuperaste</span>${info('recuperadas')}</div><div class="big num">${money(rec.total)}</div><div class="lab">${rec.n} venta${rec.n === 1 ? '' : 's'} de clientes a los que les escribiste</div></div>` : ''}
@@ -2977,10 +3151,10 @@ VIEWS['mi-negocio'] = () => {
     <div class="field" style="max-width:320px"><label for="cfa" class="row start" style="gap:8px">Avisarme con ${info('anticipacion')}</label><select class="inp" id="cfa" data-in="cfgNum" data-k="anticipacion">${[3, 5, 7, 10, 15].map(x => `<option value="${x}" ${c.anticipacion === x ? 'selected' : ''}>${x} días de anticipación</option>`).join('')}</select></div>
     <div class="field"><label for="cfp">Mensaje base</label><textarea class="inp" id="cfp" data-in="cfg" data-k="plantilla">${esc(c.plantilla)}</textarea><span class="xs muted">Puedes usar {cliente}, {persona}, {ocasion}, {fecha}, {producto} y {negocio}.</span></div></div>` : ''}
   <div class="card row" data-tour="mods" style="flex-wrap:wrap"><span class="col" style="flex:1;min-width:200px;gap:2px"><b>Funcionalidades</b><span class="small muted">Prende solo lo que usa tu negocio: equipo, clientes, domicilios, abonos y más.</span></span><a class="btn btn-l sm" href="#funciones">${ic('grid', 18)}Ver funciones</a></div>
-  ${usuariosHTML()}
+  ${ROL() === 'duena' || SES.admin ? `<a class="card row" href="#personas" style="text-decoration:none;color:var(--ink);gap:12px"><span class="thumb t-mix">${ic('user', 22)}</span><span class="col" style="flex:1;gap:2px"><b>Personas y WhatsApp</b><span class="small muted">Invita a tu equipo, decide qué puede hacer cada uno y conecta su WhatsApp con Lidera.</span></span>${ic('chevR', 20)}</a>` : ''}
   <a class="card row" href="#auditoria" style="text-decoration:none;color:inherit;flex-wrap:wrap"><span class="col" style="flex:1;min-width:200px;gap:2px"><b>Auditoría</b><span class="small muted">Quién hizo cada cambio, y deshacer si alguien se equivocó.</span></span><span class="btn btn-l sm">Ver</span></a>
   ${respaldoHTML()}
-  ${!SES.admin ? `<button type="button" class="btn btn-l block" data-act="miClave">${ic('lock', 18)}Mi clave y mi correo</button>` : ''}
+  ${!SES.admin ? `<button type="button" class="btn btn-l block" data-act="miWa">${ic('msg', 18)}Mi WhatsApp con Lidera</button><button type="button" class="btn btn-l block" data-act="miClave">${ic('lock', 18)}Mi clave y mi correo</button>` : ''}
   <button type="button" class="btn btn-l block" data-act="salir">${ic('logout', 18)}Salir de la plataforma</button>`;
 };
 
@@ -3080,6 +3254,11 @@ const MIS = [
       { sel: '[data-tour=temporada]', title: 'Temporadas', text: 'Antes de Navidad, San Valentín o el Día de la Madre te mostramos quién te compró en esa fecha el año pasado.' },
       { sel: '#cliList', title: 'Todos tus clientes', text: 'Se guardan solos con cada venta. Toca uno para ver lo que ha comprado y sus personas especiales.' }
     ] },
+  { id: 'whatsapp', mod: 'whatsapp', titulo: 'Pon tu WhatsApp para hablar con Lidera', desc: 'Así le mandas audios a Lidera para registrar ventas y preguntarle cómo vas. También invitas a tu equipo con su WhatsApp.', min: 2, route: 'personas', done: () => { const y = miMiembro(); return !!(y && y.telefono); },
+    steps: [
+      { sel: '[data-tour=miWa]', title: 'Tu WhatsApp', text: 'Toca el botón y escribe tu número. Si la IA de Lidera ya está lista, te sale «Conectar mi WhatsApp»: lo tocas y envías el mensaje que sale escrito.' },
+      { sel: '[data-tour=usNew]', title: 'Tu equipo también', text: 'Cuando invites a alguien, pon su WhatsApp y escoge qué puede hacer. Lo mismo vale en la página y por WhatsApp.' }
+    ] },
   { id: 'como', titulo: 'Mira el Resumen', desc: 'Tu ganancia real del día, la semana o el mes, en una sola pantalla.', min: 2, route: 'como-voy', manual: true,
     steps: [
       { sel: '[data-tour=heroComo]', title: 'Lo que te quedó', text: 'Lo que vendiste menos todo lo que se fue. Arriba puedes cambiar entre hoy, la semana o el mes.' },
@@ -3143,7 +3322,7 @@ function insSheet(i) {
   <div class="fgrid"><div class="field"><label for="inu">Se compra por</label><select class="inp" id="inu">${['tallo', 'rama', 'unidad', 'hoja', 'caja', 'maceta', 'bolsa', 'metro', 'paquete'].map(x => `<option ${x === i.unidad ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
   <div class="field"><label for="inp">Precio de cada uno</label><input class="inp num" id="inp" data-in="money" inputmode="numeric" value="${i.precio ? money(i.precio) : ''}" placeholder="$0"></div></div>
   <button type="button" class="btn btn-p block" data-act="insSave" data-tour="insSave" data-id="${n ? '' : i.id}">${ic('check', 20, 2.6)}Guardar insumo</button>
-  ${!n && ROL() === 'duena' ? `<button type="button" class="btn btn-d block" data-act="insDel" data-id="${i.id}">Eliminar insumo</button>` : ''}`;
+  ${!n && P('compras') ? `<button type="button" class="btn btn-d block" data-act="insDel" data-id="${i.id}">Eliminar insumo</button>` : ''}`;
 }
 
 /* Recorrido paso a paso */
@@ -3473,7 +3652,7 @@ document.addEventListener('change', async e => {
   NP.procesando = false; drawSheet();
 });
 const NP_ACT = {
-  npNuevo: () => { if (ROL() !== 'duena') return; NP = { nombre: '', precio: '', anexo: false }; openSheet(npSheet); },
+  npNuevo: () => { if (!P('productos')) return; NP = { nombre: '', precio: '', anexo: false }; openSheet(npSheet); },
   npEditar: () => { const p = prod(PD.id); if (!p) return; NP = { id: p.id, nombre: p.nombre, foto: p.foto, anexo: !!p.anexo }; openSheet(npSheet); },
   npExtra: () => { npLeer(); NP.anexo = !NP.anexo; drawSheet(); },
   npSinFoto: () => { npLeer(); if (NP.preview) URL.revokeObjectURL(NP.preview); NP.preview = null; NP.blob = null; NP.foto = null; NP.quitarFoto = true; drawSheet(); },
@@ -3968,7 +4147,7 @@ const ACT = {
   info: (el, id) => showInfo(el, id),
   more: () => openSheet(() => `<div class="sheet-h"><h3>Más opciones</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
     <div class="card" style="padding:4px 16px">${navAgrupado(navFor().filter(n => !n.main && !n.oculto), n => `<button type="button" class="list-item clickable" data-act="closeGo" data-id="${n.id}"><span class="thumb t-mix">${ic(n.icon, 22)}</span><b style="flex:1">${n.label}</b></button>`)}</div>
-    ${!SES.admin ? `<button type="button" class="btn btn-l block" data-act="miClave">${ic('lock', 18)}Mi clave y mi correo</button>` : ''}
+    ${!SES.admin ? `<button type="button" class="btn btn-l block" data-act="miWa">${ic('msg', 18)}Mi WhatsApp con Lidera</button><button type="button" class="btn btn-l block" data-act="miClave">${ic('lock', 18)}Mi clave y mi correo</button>` : ''}
     <button type="button" class="btn btn-l block" data-act="salir">${ic('logout', 18)}Salir</button>`),
   close: () => { if (RET) { PD = RET.pd; PD.receta = PD.receta.filter(r => insumo(r.iid)); RET = null; openSheet(prodSheet); return; } closeSheet(); },
   scrim: (el, id, v, e) => { if (e.target === el && !sheetLock) ACT.close(); },
@@ -3993,7 +4172,7 @@ const ACT = {
   vper: (el, id, v) => { UI.vper = v; render(); },
   // productos
   ptab: (el, id, v) => { UI.ptab = v; render(); },
-  prodOpen: (el, id) => { if (ROL() !== 'duena') return; PD = JSON.parse(JSON.stringify(prod(id))); openSheet(prodSheet); },
+  prodOpen: (el, id) => { if (!P('productos')) return; PD = JSON.parse(JSON.stringify(prod(id))); openSheet(prodSheet); },
   prodNew: () => { PD = { id: 'p' + uid(), nombre: '', precio: 0, anexo: UI.ptab === 'anexo', manoObra: 0, tono: UI.ptab === 'anexo' ? 't-gift' : 't-rose', receta: S.insumos.length ? [{ iid: S.insumos[0].id, cant: 1 }] : [], isNew: true }; openSheet(prodSheet); },
   pdTipo: (el, id, v) => { PD.anexo = v === '1'; PD.tono = PD.anexo ? 't-gift' : (PD.tono === 't-gift' ? 't-rose' : PD.tono); drawSheet(); },
   pdAdd: () => { if (!S.insumos.length) { PD.receta.push({ iid: '', cant: 1 }); RET = { pd: PD, i: PD.receta.length - 1 }; openSheet(() => insSheet(null)); return; } PD.receta.push({ iid: S.insumos[0].id, cant: 1 }); drawSheet(); },
