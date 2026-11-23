@@ -159,7 +159,7 @@ textarea.inp{padding:12px 14px;min-height:120px;line-height:1.45;resize:vertical
 .code{position:absolute;top:12px;left:12px;background:rgba(15,28,46,.84);color:#fff;font-size:11.5px;font-weight:800;border-radius:8px;padding:3px 7px;letter-spacing:.02em}
 .scrollx{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
 .scrollx .chip{flex:none}
-.fotoBig{width:100%;max-height:320px;object-fit:cover;border-radius:16px;background:#F1F5F9;display:block}
+.fotoBig{width:min(100%,340px);aspect-ratio:1/1;object-fit:cover;border-radius:16px;background:#F1F5F9;display:block;margin:0 auto}
 .cartline{display:grid;grid-template-columns:minmax(0,1fr) auto 130px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)}
 .stepper{display:flex;align-items:center;gap:4px}
 .stepper button{width:40px;height:40px;border-radius:12px;border:1.5px solid var(--line2);background:#fff;display:flex;align-items:center;justify-content:center;padding:0}
@@ -267,7 +267,8 @@ textarea.inp{padding:12px 14px;min-height:120px;line-height:1.45;resize:vertical
 /* Lidera: productos propios */
 .pfoto-vacia{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1/1;border-radius:11px;background:var(--green-l);color:var(--deep);font-size:40px;font-weight:800}
 .np-foto{display:flex;align-items:center;justify-content:center;min-height:170px;border:2px dashed var(--line2);border-radius:16px;background:var(--soft);cursor:pointer;overflow:hidden;color:var(--green-d)}
-.np-foto img{width:100%;max-height:300px;object-fit:cover;display:block}
+.np-foto.con{flex-direction:column;gap:8px;min-height:0;padding:12px;border-style:solid;border-width:1px;border-color:var(--line)}
+.np-foto img{width:min(260px,100%);aspect-ratio:1/1;object-fit:cover;border-radius:14px;display:block;box-shadow:0 2px 10px rgba(15,28,46,.12)}
 /* Lidera: marca */
 .marca-login{display:flex;align-items:center;justify-content:center;gap:10px}
 .marca-login img{width:52px;height:52px}
@@ -425,9 +426,9 @@ const GKEY = () => 'mno-guias-' + ((SES.user && SES.user.id) || 'local');
 function guiasOcultas() { try { return JSON.parse(localStorage.getItem(GKEY()) || '[]'); } catch (e) { return []; } }
 function guiaSec(k) {
   const f = GUIAS[k]; if (!f) return '';
-  if (guiasOcultas().includes(k)) return `<button type="button" class="guia-mini" data-act="guiaSec" data-v="${k}">${ic('help', 16)}¿Qué hago aquí?</button>`;
+  if (!(UI.guiasAbiertas || []).includes(k)) return `<button type="button" class="guia-mini" data-act="guiaSec" data-v="${k}" aria-expanded="false">${ic('help', 16)}¿Qué hago aquí?</button>`;
   const g = f(ROL() === 'duena'); const pasos = g.p.filter(Boolean);
-  return `<div class="guia-sec"><div class="gs-h"><b>${ic('help', 18)}¿Qué hago aquí?</b><button type="button" class="btn btn-l xs" data-act="guiaSec" data-v="${k}">Entendido, ocultar</button></div>
+  return `<div class="guia-sec"><div class="gs-h"><b>${ic('help', 18)}¿Qué hago aquí?</b><button type="button" class="btn btn-l xs" data-act="guiaSec" data-v="${k}" aria-expanded="true">Cerrar</button></div>
     <p>${g.t}</p>${pasos.length ? `<ol>${pasos.map(x => `<li>${x}</li>`).join('')}</ol>` : ''}</div>`;
 }
 
@@ -988,7 +989,6 @@ VIEWS.inicio = () => {
   const hoy = ventasEn(TODAY(), TODAY()).length;
   return `<h2 class="v-title">Hola${own ? (S.config.duena ? ', ' + esc(S.config.duena) : '') : ', ' + esc(ME().nombre)}</h2>
   ${guiaSec('inicio')}
-  ${paraEmpezarHTML()}
   <a class="accion venta" href="#vender" data-tour="btnVenta"><span class="ai">${ic('add', 30, 2.6)}</span><span><b>Registrar venta</b><span class="as">${hoy ? `Hoy llevas ${hoy} venta${hoy === 1 ? '' : 's'}` : 'Toca la foto de lo que vendiste'}</span></span></a>
   ${on('gastos') ? `<div class="acciones2">
     <button type="button" class="accion dia" data-act="gastoDia" data-tour="btnDia"><span class="ai">${ic('wallet', 26, 2.4)}</span><span><b>Gasto del día</b><span class="as">Domicilios, bolsas, transporte</span></span></button>
@@ -1229,20 +1229,40 @@ const ACCIONES = [
   { t: 'A quién le escribo hoy', p: 'cumpleaños aniversario fecha especial whatsapp promocion mensaje', go: 'clientes', mod: 'clientes' },
   { t: 'Cobrar saldos pendientes', p: 'abono saldo debe cobrar pendiente', fn: () => { UI.vf = 'debe'; go('ventas'); }, mod: 'abonos' },
   { t: 'Prender o apagar funciones', p: 'funcionalidades modulos apagar prender quitar', go: 'funciones', own: 1 },
-  { t: 'Deshacer un cambio', p: 'deshacer error equivoque historial volver', fn: () => { go('mi-negocio'); setTimeout(() => { const e = document.getElementById('historial'); if (e) e.scrollIntoView({ block: 'start' }); }, 80); }, own: 1 },
+  { t: 'Deshacer un cambio o ver quién cambió algo', p: 'deshacer error equivoque historial volver auditoria quien cambio', go: 'auditoria', own: 1 },
+  { t: 'Agregar un producto o servicio', p: 'producto nuevo agregar crear servicio foto subir', fn: () => { go('productos'); setTimeout(() => ACT.npNuevo(), 60); }, own: 1 },
+  { t: 'Ponerle foto o cambiarle el nombre a un producto', p: 'foto imagen nombre producto cambiar', go: 'productos', own: 1 },
+  { t: 'Ver los productos debajo del precio mínimo', p: 'precio minimo bajo rojo pierdo margen ganancia', fn: () => { UI.pcat = '__bajo'; go('productos'); }, own: 1 },
+  { t: 'Ver mis gastos fijos y del día', p: 'gastos fijos arriendo servicios pagados pendientes', go: 'gastos', mod: 'gastos' },
+  { t: 'Marcar un gasto fijo como pagado', p: 'pague arriendo pagado gasto fijo vencido', fn: () => ACT.gastoFijo(), mod: 'gastos' },
+  { t: 'Contar lo que tengo (inventario)', p: 'inventario contar conteo tengo existencias stock', go: 'inventario', mod: 'inventario', own: 1 },
+  { t: 'Anotar algo que se dañó o se perdió', p: 'dano danado perdi marchito vencio inventario botar', go: 'inventario', mod: 'inventario', own: 1 },
+  { t: 'Ver mi meta del mes', p: 'meta mes gastos cubrir falta resumen ganancia', go: 'como-voy', own: 1 },
+  { t: 'Invitar a alguien a la plataforma', p: 'invitar usuario secretaria empleado correo acceso entrar', fn: () => { go('mi-negocio'); setTimeout(() => { const e = document.getElementById('usuarios'); if (e) e.scrollIntoView({ block: 'start' }); }, 80); }, own: 1 },
+  { t: 'Cambiar mi clave o mi correo', p: 'clave contrasena password correo email cambiar olvide', fn: () => ACT.miClave() },
+  { t: 'Configurar mi negocio (gastos fijos e inventario)', p: 'configurar empezar pasos inicio negocio arranque', go: 'empezar', own: 1 },
+  { t: 'Cambiar la ganancia mínima', p: 'ganancia minima porcentaje 30 margen precios', go: 'mi-negocio', own: 1 },
   { t: 'Guardar una copia de seguridad', p: 'copia respaldo descargar backup guardar', fn: () => { go('mi-negocio'); setTimeout(() => { const e = document.getElementById('respaldo'); if (e) e.scrollIntoView({ block: 'start' }); }, 80); }, own: 1 },
   { t: 'Aprender paso a paso', p: 'guia ayuda tutorial misiones aprender', go: 'guia' }
 ];
+const SECC_KW = { inicio: 'inicio principal hoy', ventas: 'ventas lista vendido historial', gastos: 'gastos fijos dia plata salio', 'como-voy': 'resumen ganancia meta cuanto gane metricas',
+  clientes: 'clientes contactos fechas cumpleanos', productos: 'productos precios recetas catalogo servicios', compras: 'compras insumos proveedores precios compra',
+  inventario: 'inventario existencias conteo stock', equipo: 'equipo empleados pagos nomina', 'mi-negocio': 'mi negocio datos usuarios claves ajustes configuracion',
+  funciones: 'funcionalidades funciones prender apagar', auditoria: 'auditoria cambios quien historial deshacer', guia: 'guia ayuda misiones aprender tutorial' };
 function buscarHTML(q) {
   q = sinTilde(q).trim();
+  const secc = navFor().filter(n => !n.oculto && (!q || q.split(/\s+/).every(w => sinTilde(n.label + ' ' + (SECC_KW[n.id] || '')).includes(w))));
+  const insL = q.length >= 2 && (on('compras') || on('inventario')) && ROL() === 'duena' ? S.insumos.filter(i => sinTilde(i.nombre).includes(q)).slice(0, 5) : [];
   const ok = a => (!a.own || ROL() === 'duena') && (!a.mod || on(a.mod)) && (!a.go || navFor().some(n => n.id === a.go));
   let acc = ACCIONES.filter(ok);
   if (q) acc = acc.filter(a => q.split(/\s+/).every(w => sinTilde(a.t + ' ' + a.p).includes(w)));
   const prods = q.length >= 2 ? filtrarProductos(q, 'todos').slice(0, 6) : [];
   const clis = q.length >= 2 && on('clientes') && ROL() !== 'florista' ? S.clientes.filter(c => sinTilde(c.nombre).includes(q) || (q.replace(/\D/g, '').length >= 3 && c.telefono.includes(q.replace(/\D/g, '')))).slice(0, 5) : [];
   let h = '';
-  if (acc.length) h += `<div class="sect">${q ? 'Lo que puedes hacer' : 'Lo más usado'}</div>` + acc.slice(0, q ? 8 : 9).map(a => `<button type="button" class="sug" data-act="bAcc" data-id="${ACCIONES.indexOf(a)}"><span class="row start" style="gap:10px"><span class="badge ok">Acción</span><b style="text-align:left">${esc(a.t)}</b></span>${ic('chevR', 18)}</button>`).join('');
+  if (secc.length) h += `<div class="sect">${q ? 'Ir a una sección' : 'Todas las secciones'}</div><div class="chips" style="padding:2px 0">` + secc.map(n => `<button type="button" class="chip" data-act="bSec" data-v="${n.id}">${ic(n.icon, 16)}${esc(n.label)}</button>`).join('') + '</div>';
+  if (acc.length) h += `<div class="sect">${q ? 'Lo que puedes hacer' : 'Lo más usado'}</div>` + acc.slice(0, q ? 8 : 12).map(a => `<button type="button" class="sug" data-act="bAcc" data-id="${ACCIONES.indexOf(a)}"><span class="row start" style="gap:10px"><span class="badge ok">Acción</span><b style="text-align:left">${esc(a.t)}</b></span>${ic('chevR', 18)}</button>`).join('');
   if (prods.length) h += `<div class="sect">Productos</div>` + prods.map(p => `<button type="button" class="sug" data-act="bProd" data-id="${p.id}"><span class="row start" style="gap:10px;min-width:0">${p.foto ? `<img src="${p.foto}" alt="" style="width:40px;height:40px;border-radius:10px;object-fit:cover;flex:none">` : ''}<span class="col" style="gap:0;text-align:left"><b>${esc(p.code || '')} · ${esc(p.nombre)}</b><span class="xs muted">${money(p.precio)}</span></span></span>${ic('chevR', 18)}</button>`).join('');
+  if (insL.length) h += `<div class="sect">Insumos</div>` + insL.map(i => `<button type="button" class="sug" data-act="bIns" data-id="${i.id}"><span class="col" style="gap:0;text-align:left"><b>${esc(i.nombre)}</b><span class="xs muted">${money(i.precio)} cada ${esc(i.unidad || 'unidad')}</span></span>${ic('chevR', 18)}</button>`).join('');
   if (clis.length) h += `<div class="sect">Clientes</div>` + clis.map(c => `<button type="button" class="sug" data-act="bCli" data-id="${c.id}"><span class="col" style="gap:0;text-align:left"><b>${esc(c.nombre)}</b><span class="xs muted">${phoneFmt(c.telefono)}</span></span>${ic('chevR', 18)}</button>`).join('');
   return h || '<div class="empty">No encontramos nada con esa palabra. Prueba con otra, por ejemplo «precio», «gasto» o «ayer».</div>';
 }
@@ -2178,6 +2198,8 @@ const EXT_ACT = {
   bAcc: (el, id) => { const a = ACCIONES[Number(id)]; closeSheet(); if (a.fn) a.fn(); else go(a.go); },
   bProd: (el, id) => { closeSheet(); if (ROL() === 'duena') ACT.prodOpen(null, id); else ACT.venderEste(null, id); },
   bCli: (el, id) => { closeSheet(); ACT.cliOpen(null, id); },
+  bSec: (el, id, v) => { closeSheet(); go(v); },
+  bIns: (el, id) => { closeSheet(); go(on('compras') ? 'compras' : 'inventario'); const i = insumo(id); if (i && on('compras')) setTimeout(() => openSheet(() => insSheet(i)), 60); },
   venderEste: (el, id) => { const p = prod(id); if (!p) return; if (!D || D.editId) D = newDraft(); D.items[id] = D.items[id] || { cant: 0, precio: p.precio }; D.items[id].cant++; closeSheet(); go('vender'); },
   funcTog: (el, id, v) => { const apaga = on(v); marca(`${apaga ? 'Apagaste' : 'Prendiste'} «${funcNombre(v)}»`); S.config.mods = S.config.mods || {}; S.config.mods[v] = !apaga; if (apaga && S.guia) MIS.forEach(m => { if (m.mod === v && misState(m) === 'pend') S.guia.estado[m.id] = 'skip'; }); if (!apaga && D && !D.editId) D = null; save(); renderShell(); render(); toast(apaga ? `Apagaste «${funcNombre(v)}»` : `Prendiste «${funcNombre(v)}»`); },
   histAsk: (el, id) => { UI.undoAsk = id; render(); },
@@ -2493,7 +2515,7 @@ function prodSheet() {
   const m = margen(tmp); const [cls, lab] = semaforo(m.plimpio);
   const sug = 0;
   return `<div class="sheet-h"><h3>${esc(p.nombre)}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
-  ${p.foto ? `<div style="position:relative"><img class="fotoBig" src="${p.foto}" alt="${esc(p.nombre)}">${p.code ? `<span class="code">${p.code}</span>` : ''}</div>` : p.code ? `<span class="badge neu" style="align-self:flex-start">Código ${esc(p.code)}</span>` : ''}
+  ${p.foto ? `<div style="position:relative;width:min(100%,340px);margin:0 auto"><img class="fotoBig" src="${p.foto}" alt="${esc(p.nombre)}">${p.code ? `<span class="code">${p.code}</span>` : ''}</div>` : p.code ? `<span class="badge neu" style="align-self:flex-start">Código ${esc(p.code)}</span>` : ''}
   ${p.recienCreado ? '<div style="background:#EAF0FE;border:1px solid #C3D3FB;border-radius:14px;padding:12px 14px;font-size:14.5px;line-height:1.5"><b>Ya está creado.</b> Ahora agrega lo que lleva y, si alguien cobra por hacerlo, la mano de obra. Así ves cuánto te deja de verdad.</div>' : ''}
   ${p.desc ? `<p class="small muted" style="margin:0;line-height:1.5">${esc(p.desc)}</p>` : ''}
   <div class="field" style="max-width:320px"><label for="pdp">Lo vendes en</label><input class="inp num" id="pdp" data-in="pd" data-k="precio" inputmode="numeric" value="${money(num(p.precio))}">${p.web ? '<span class="xs muted">Al guardar, el precio nuevo queda listo para tu página web.</span>' : ''}</div>
@@ -2976,6 +2998,14 @@ const MIS = [
       { sel: '#inp', title: '¿Cuánto te cuesta cada uno?', text: 'El precio de una sola unidad. Si compraste 100 rosas por $160.000, cada una te sale a $1.600.', back0: sinVentana('inn') },
       { sel: '[data-tour=insSave]', title: 'Guárdalo', text: 'Al guardar, se actualiza el costo de todos los productos que lo llevan.', back0: sinVentana('inn') }
     ] },
+  { id: 'agregar', titulo: 'Agrega un producto', desc: 'Lo que vendes o el servicio que haces, con su precio y si quieres una foto del celular. Después le pones lo que lleva.', min: 2, route: 'productos', pre: () => { UI.pq = ''; UI.pcat = 'todos'; }, done: () => S.productos.some(p => p.propio), skip: true, skipTxt: 'Ya tengo mis productos',
+    steps: [
+      { sel: '[data-act=npNuevo]', title: 'Toca «Agregar producto»', text: 'Está arriba, al lado de «Mis productos».', auto: hayVentana('npN'), onNext: () => ACT.npNuevo() },
+      { sel: '.np-foto', title: 'La foto (es opcional)', text: 'Tómala con el celular o escógela de tu galería. La acomodamos sola para que se vea bien en la lista.', optional: true, back0: sinVentana('npN') },
+      { sel: '#npN', title: '¿Cómo se llama?', text: 'El nombre con el que lo vendes, por ejemplo «Ramo de 12 rosas» o «Limpieza de pies».', back0: sinVentana('npN') },
+      { sel: '#npP', title: '¿En cuánto lo vendes?', text: 'El precio que le cobras al cliente.', back0: sinVentana('npN') },
+      { sel: '#npBtn', title: 'Créalo', text: 'Toca «Crear producto». Se abre su ficha para que le pongas lo que lleva y veas cuánto te deja.', back0: sinVentana('npN') }
+    ] },
   { id: 'productos', titulo: 'Confirma la receta de un producto', desc: 'Armamos la receta de cada producto mirando su foto. Revisa la de uno que vendas mucho y corrige lo que no sea así.', min: 4, route: 'productos', pre: () => { UI.pq = ''; UI.pcat = 'todos'; }, done: () => S.productos.some(p => !p.anexo && !p.estimada && !sinReceta(p)),
     steps: [
       { sel: '[data-tour=psearch]', title: 'Busca el producto', text: 'Escribe el nombre o el número del código que aparece en la foto, por ejemplo 14. También puedes filtrar por tipo.' },
@@ -3082,7 +3112,7 @@ function finalHTML() {
   <button type="button" class="btn btn-p block" data-act="closeGo" data-id="inicio">Ir al inicio</button>`;
 }
 function hudHTML(r) {
-  if (ROL() !== 'duena' || SES.admin || !on('guia') || r === 'inicio' || !S.guia || S.guia.oculta || TOUR || r === 'guia' || S.welcome) return '';
+  return ''; // Las misiones solo se ven en «Guía», para no ocupar espacio en las demás pantallas
   const p = misPend(); if (!p.length) return '';
   const m = p[0], k = MIS.indexOf(m) + 1, prog = MIS.length - p.length;
   return `<div class="hud"><div class="col" style="flex:1;min-width:200px;gap:4px"><span class="xs strong" style="color:#1D4ED8;letter-spacing:.06em">MISIÓN ${k} DE ${MIS.length}</span><b style="font-size:16px">${esc(m.titulo)}</b><div class="bar"><i style="width:${pct(prog, MIS.length)}%;background:#22D3EE"></i></div></div>
@@ -3379,15 +3409,26 @@ const INV_ACT = {
    El dueño agrega sus propios productos (con foto opcional)
    ========================================================= */
 let NP = null;
-async function fotoAchicar(file, max = 720) {
+// Acomoda cualquier foto a un cuadrado de 720 px, como se ve en la lista de productos:
+// si es casi cuadrada se recorta al centro; si es muy alta o muy ancha se ve completa sobre un fondo difuminado de la misma foto.
+async function fotoAchicar(file, lado = 720) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; });
-    const k = Math.min(1, max / Math.max(img.width, img.height));
-    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    let b = await new Promise(ok => c.toBlob(ok, 'image/webp', 0.82));
-    if (!b || b.type !== 'image/webp') b = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.85));
+    const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height, r = W / H, m = Math.min(W, H);
+    const c = document.createElement('canvas'); c.width = c.height = lado;
+    const x = c.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+    if (r > 0.82 && r < 1.22) x.drawImage(img, (W - m) / 2, (H - m) / 2, m, m, 0, 0, lado, lado);
+    else {
+      const t = document.createElement('canvas'); t.width = t.height = 14;
+      t.getContext('2d').drawImage(img, (W - m) / 2, (H - m) / 2, m, m, 0, 0, 14, 14);
+      x.drawImage(t, 0, 0, lado, lado);
+      x.fillStyle = 'rgba(255,255,255,.28)'; x.fillRect(0, 0, lado, lado);
+      const k = Math.min(lado / W, lado / H), w = W * k, h = H * k;
+      x.drawImage(img, (lado - w) / 2, (lado - h) / 2, w, h);
+    }
+    let b = await new Promise(ok => c.toBlob(ok, 'image/webp', 0.84));
+    if (!b || b.type !== 'image/webp') b = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.86));
     return b;
   } finally { URL.revokeObjectURL(url); }
 }
@@ -3403,7 +3444,7 @@ function npSheet() {
   const n = NP, edit = !!n.id, foto = n.preview || n.foto;
   return `<div class="sheet-h"><h3>${edit ? 'Cambiar nombre o foto' : 'Agregar producto'}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
   ${edit ? '' : '<p class="small muted" style="margin:0;line-height:1.5">Puede ser algo que vendes o un servicio que haces. Después le pones lo que lleva para saber cuánto te deja.</p>'}
-  <label class="np-foto" for="npFoto">${foto ? `<img src="${esc(foto)}" alt="Foto del producto">` : `<span class="col" style="align-items:center;gap:6px">${ic('upload', 30)}<b>Tomar o subir una foto</b><span class="xs muted">Es opcional</span></span>`}
+  <label class="np-foto ${foto ? 'con' : ''}" for="npFoto">${foto ? `<img src="${esc(foto)}" alt="Foto del producto"><span class="xs muted">Así se va a ver en tu lista de productos</span>` : n.procesando ? `<span class="col" style="align-items:center;gap:6px">${ic('refresh', 28)}<b>Acomodando la foto…</b></span>` : `<span class="col" style="align-items:center;gap:6px">${ic('upload', 30)}<b>Tomar o subir una foto</b><span class="xs muted">Es opcional. Sirve cualquier foto, la acomodamos sola.</span></span>`}
     <input type="file" id="npFoto" accept="image/*" class="sr"></label>
   ${foto ? `<div class="row" style="justify-content:center;gap:16px"><label class="linkbtn" for="npFoto" style="cursor:pointer">Cambiar la foto</label><button type="button" class="linkbtn" data-act="npSinFoto">Quitar la foto</button></div>` : ''}
   <div class="field"><label for="npN">¿Cómo se llama?</label><input class="inp" id="npN" value="${esc(n.nombre)}" placeholder="Ej: Ramo de 12 rosas, Limpieza de pies"></div>
@@ -3416,8 +3457,10 @@ document.addEventListener('change', async e => {
   if (e.target.id !== 'npFoto' || !NP) return;
   const f = e.target.files && e.target.files[0]; if (!f) return;
   npLeer();
-  try { NP.blob = await fotoAchicar(f); if (NP.preview) URL.revokeObjectURL(NP.preview); NP.preview = URL.createObjectURL(NP.blob); NP.quitarFoto = false; drawSheet(); }
+  NP.procesando = true; drawSheet();
+  try { NP.blob = await fotoAchicar(f); if (NP.preview) URL.revokeObjectURL(NP.preview); NP.preview = URL.createObjectURL(NP.blob); NP.quitarFoto = false; }
   catch (err) { toast('No se pudo leer esa foto. Prueba con otra.'); }
+  NP.procesando = false; drawSheet();
 });
 const NP_ACT = {
   npNuevo: () => { if (ROL() !== 'duena') return; NP = { nombre: '', precio: '', anexo: false }; openSheet(npSheet); },
@@ -4031,7 +4074,7 @@ const ACT = {
   // cómo voy y configuración
   period: (el, id, v) => { UI.period = v; render(); },
   verBajos: () => { UI.pcat = '__bajo'; UI.pq = ''; location.hash = 'productos'; },
-  guiaSec: (el, id, v) => { const L = guiasOcultas(); const i = L.indexOf(v); if (i >= 0) L.splice(i, 1); else L.push(v); try { localStorage.setItem(GKEY(), JSON.stringify(L)); } catch (e) { } render(); },
+  guiaSec: (el, id, v) => { const L = UI.guiasAbiertas = UI.guiasAbiertas || []; const i = L.indexOf(v); if (i >= 0) L.splice(i, 1); else L.push(v); render(); },
   cfgGan: (el, id, v) => { S.config.gananciaMin = Math.max(GAN_MIN, Number(v)); marca(`Ganancia mínima: ${v}%`); save(); render(); },
   cfgGmodo: (el, id, v) => { S.config.gastosModo = v; marca(v === 'manual' ? 'Pones tú el porcentaje de gastos' : 'La parte de los gastos se calcula sola'); save(); render(); },
   pmodo: (el, id, v) => { marca(v === 'cliente' ? 'Anotas lo que pagó el cliente' : 'Anotas lo que te queda sin comisión'); S.config.precioModo = v; save(); render(); },
