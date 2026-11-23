@@ -461,7 +461,8 @@ const INFO = {
   promedio: ['Venta promedio', 'Lo que te paga en promedio cada cliente. Si sube, estás vendiendo productos más grandes o más extras.'],
   porGoogle: ['Llegaron por Google', 'Cuántas de tus ventas fueron de clientes que te encontraron en Google. Esas son las que pagan comisión.'],
   porCobrar: ['Por cobrar', 'Lo que te deben los clientes que dejaron un abono y todavía no pagan el resto.'],
-  domicilio: ['Domicilio', 'Lo que le cobras al cliente por llevar el pedido. Suma a la venta y no paga comisión. La gasolina o el mensajero que lo lleva lo anotas en Gastos, en «Llevar pedidos».'],
+  domicilio: ['Domicilio', 'Lo que le cobras al cliente por llevar el pedido. Lo paga el cliente aparte: se ve en lo que pagó, pero no se suma a lo que te queda ni paga comisión, porque es para quien lo lleva.'],
+  entregas: ['A domicilio', 'Cuántas de tus ventas fueron a domicilio y cuántas las recogieron en la tienda. Sirve para saber dónde vendes más.'],
   obligatorios: ['Datos que siempre se preguntan', 'Si prendes uno, el WhatsApp te lo pregunta cuando se te olvida decirlo, y el formulario de «Vender» no deja guardar sin ese dato. Los que tienen candado los maneja Líderes Locales.'],
   usuarios: ['Usuarios y claves', 'Invita a cada persona con su correo: le llega un enlace para que ella misma escoja su usuario y su clave. La secretaria no ve las ganancias y cada empleado solo ve lo suyo. Si a alguien se le olvida la clave, toca «Se me olvidó la clave» al entrar y le llega un correo.'],
   extra: ['Extras', 'Cosas que se venden aparte junto con el producto, como chocolates, globos o vinos. Según lo acordado con tu negocio, no pagan comisión.']
@@ -793,8 +794,9 @@ function calcVenta(d) {
   const mo = !e ? 0 : e.tipo === 'producto' ? its.filter(x => !x.anexo).reduce((s, x) => s + x.mo * x.cant, 0) : e.tipo === 'mixto' ? num(e.valorProducto) * units : 0;
   const parte = Math.min(num(d.parte), base);
   const com = !on('comision') || S.config.precioModo === 'neto' ? 0 : d.origen === 'google' ? base * comPct() : d.origen === 'parte' ? parte * comPct() : 0;
-  const dom = on('domicilios') ? num(d.dom) : 0;
-  return { its, total: total + dom, dom, insumos: insum, base, units, mo, com, parte, quedo: total + dom - insum - mo - com };
+  const dom = on('domicilios') && d.entrega !== 'tienda' ? num(d.dom) : 0;
+  // El domicilio lo paga el cliente y no es ganancia: suma en lo que pagó, pero no en lo que te queda
+  return { its, total: total + dom, dom, insumos: insum, base, units, mo, com, parte, quedo: total - insum - mo - com };
 }
 
 function deuda(e) {
@@ -847,7 +849,8 @@ const ventasEn = (a, b) => { const A = iso(a), B = iso(b) + 'T99'; return S.vent
 function resumen(a, b) {
   const vs = ventasEn(a, b);
   const A = iso(a), B = iso(b);
-  const ventas = vs.reduce((s, v) => s + v.total, 0), insum = vs.reduce((s, v) => s + v.insumos, 0), mo = vs.reduce((s, v) => s + v.manoObra, 0), com = vs.reduce((s, v) => s + v.comision, 0);
+  const dom = vs.reduce((s, v) => s + (v.domicilio || 0), 0), nDom = vs.filter(v => v.entrega === 'domicilio' || v.domicilio > 0).length, nTienda = vs.filter(v => v.entrega === 'tienda').length;
+  const ventas = vs.reduce((s, v) => s + v.total - (v.domicilio || 0), 0), insum = vs.reduce((s, v) => s + v.insumos, 0), mo = vs.reduce((s, v) => s + v.manoObra, 0), com = vs.reduce((s, v) => s + v.comision, 0);
   const days = dBetween(a, b) + 1;
   const frac = days / dim(a.getFullYear(), a.getMonth());
   let eqDias = 0, eqFijo = 0;
@@ -860,7 +863,7 @@ function resumen(a, b) {
   const gf = S.gastosFijos.reduce((s, g) => s + mensualEq(g), 0) * frac;
   const otros = S.gastos.filter(g => g.tipo === 'variable' && g.fecha >= A && g.fecha <= B + 'T99').reduce((s, g) => s + g.monto, 0);
   const quedo = ventas - insum - equipo - gf - com - otros;
-  return { vs, n: vs.length, ventas, insumos: insum, mo, com, equipo, eqDias, eqFijo, gf, otros, quedo, days };
+  return { vs, n: vs.length, ventas, dom, nDom, nTienda, insumos: insum, mo, com, equipo, eqDias, eqFijo, gf, otros, quedo, days };
 }
 function topProductos(vs) {
   const m = {};
@@ -1059,7 +1062,7 @@ function draftDeVenta(v) {
   d.editId = v.id; d.fecha = v.fecha.slice(0, 10); d.items = {};
   v.items.forEach(x => { if (prod(x.pid)) d.items[x.pid] = { cant: x.cant, precio: x.precio }; });
   d.clienteId = cliente(v.clienteId) ? v.clienteId : null; d.perSel = v.personaId || 'ninguna'; d.empleadoId = v.empleadoId;
-  d.origen = v.origen; d.parte = v.parte || ''; d.pago = v.pago; d.dom = v.domicilio || 0;
+  d.origen = v.origen; d.parte = v.parte || ''; d.pago = v.pago; d.dom = v.domicilio || 0; d.entrega = v.entrega || (v.domicilio > 0 ? 'domicilio' : 'tienda');
   d.pagoTipo = v.saldo > 0 ? 'abono' : 'todo'; d.abono = v.saldo > 0 ? v.abono : 0;
   return d;
 }
@@ -1358,9 +1361,9 @@ const MAP = {
   ventas: { tabla: 'ventas',
     a: r => ({ id: r.id, numero: r.numero, fuente: r.fuente, fecha: fechaApp(r.fecha), items: (r.items || []).map(x => ({ pid: x.pid, nombre: x.nombre, anexo: !!x.anexo, cant: Number(x.cant) || 0, precio: nn(x.precio), costo: nn(x.costo) })),
       clienteId: r.cliente_id, personaId: r.persona_id, empleadoId: r.empleado_id, origen: r.origen, parte: nn(r.parte), pago: r.pago, total: nn(r.total), insumos: nn(r.insumos), manoObra: nn(r.mano_obra),
-      comision: nn(r.comision), quedo: nn(r.quedo), recuperada: !!r.recuperada, sinReceta: !!r.sin_receta, domicilio: nn(r.domicilio), abono: nn(r.abono), saldo: nn(r.saldo) }),
+      comision: nn(r.comision), quedo: nn(r.quedo), recuperada: !!r.recuperada, sinReceta: !!r.sin_receta, domicilio: nn(r.domicilio), entrega: r.entrega || (nn(r.domicilio) > 0 ? 'domicilio' : null), abono: nn(r.abono), saldo: nn(r.saldo) }),
     d: o => ({ id: o.id, fecha: fechaDB(o.fecha), items: o.items.map(x => ({ pid: x.pid, cant: x.cant, precio: x.precio })), cliente_id: o.clienteId || null, persona_id: o.personaId || null,
-      empleado_id: o.empleadoId || null, origen: o.origen || 'otro', parte: num(o.parte), pago: o.pago || null, domicilio: num(o.domicilio), abono: o.abono == null ? null : num(o.abono) }) }
+      empleado_id: o.empleadoId || null, origen: o.origen || 'otro', parte: num(o.parte), pago: o.pago || null, domicilio: num(o.domicilio), entrega: o.entrega || null, abono: o.abono == null ? null : num(o.abono) }) }
 };
 const ORDEN = ['insumos', 'productos', 'empleados', 'clientes', 'gastosFijos', 'compras', 'gastos', 'ventas'];
 let SNAP = {}, SNAPCFG = '', syncCola = Promise.resolve(), saveT = null, syncPend = false, syncFallos = 0;
@@ -2252,15 +2255,15 @@ const EXT_INP = {
 
 /* ---------- Vender ---------- */
 let D;
-function newDraft() { const def = (S.empleados.find(e => e.tipo === 'producto' || e.tipo === 'mixto') || { id: 'duena' }).id; return { items: {}, clienteId: null, q: '', nuevo: { nombre: '', telefono: '' }, perSel: 'ninguna', per: { nombre: '', relacion: '', ocasion: 'Cumpleaños', fecha: '' }, empleadoId: ROL() === 'florista' ? S.rol : on('equipo') && !campo('empleado') ? def : on('equipo') ? null : 'duena', origen: on('comision') ? (campo('origen') ? null : 'google') : 'otro', parte: '', pago: campo('pago') ? '' : 'Nequi', fecha: iso(TODAY()), dom: campo('domicilio') && on('domicilios') ? null : 0, pagoTipo: campo('abono') && on('abonos') ? null : 'todo', abono: 0 }; }
-const V_TXT = { cliente: 'el cliente', persona: 'para quién es', empleado: 'quién lo hizo', origen: 'cómo llegó el cliente', domicilio: 'si cobraste domicilio', pago: 'cómo pagó' };
+function newDraft() { const def = (S.empleados.find(e => e.tipo === 'producto' || e.tipo === 'mixto') || { id: 'duena' }).id; return { items: {}, clienteId: null, q: '', nuevo: { nombre: '', telefono: '' }, perSel: 'ninguna', per: { nombre: '', relacion: '', ocasion: 'Cumpleaños', fecha: '' }, empleadoId: ROL() === 'florista' ? S.rol : on('equipo') && !campo('empleado') ? def : on('equipo') ? null : 'duena', origen: on('comision') ? (campo('origen') ? null : 'google') : 'otro', parte: '', pago: campo('pago') ? '' : 'Nequi', fecha: iso(TODAY()), dom: on('domicilios') ? null : 0, entrega: null, pagoTipo: campo('abono') && on('abonos') ? null : 'todo', abono: 0 }; }
+const V_TXT = { cliente: 'el cliente', persona: 'para quién es', empleado: 'quién lo hizo', origen: 'cómo llegó el cliente', domicilio: 'cómo se entregó', pago: 'cómo pagó' };
 function vFaltan() {
   const cv = cliente(D.clienteId), f = [];
   if (on('clientes') && ((campo('cliente_nombre') && !cv && !D.nuevo.nombre.trim()) || (campo('cliente_telefono') && !(cv && cv.telefono) && D.nuevo.telefono.replace(/\D/g, '').length < 7))) f.push('cliente');
   if (on('clientes') && campo('persona') && (D.perSel === 'ninguna' || (D.perSel === 'nueva' && !D.per.nombre.trim()))) f.push('persona');
   if (on('comision') && campo('origen') && !D.origen) f.push('origen');
   if ((campo('pago') && !D.pago) || (on('abonos') && campo('abono') && !D.pagoTipo)) f.push('pago');
-  if (on('domicilios') && campo('domicilio') && D.dom == null) f.push('domicilio');
+  if (on('domicilios') && (!D.entrega || (D.entrega === 'domicilio' && D.dom == null))) f.push('domicilio');
   if (on('equipo') && campo('empleado') && !D.empleadoId) f.push('empleado');
   return f;
 }
@@ -2289,7 +2292,7 @@ VIEWS.vender = () => {
   }
 
   const falta = UI.vFalta ? vFaltan() : [];
-  const obl = k => k === 'cliente' ? (campo('cliente_nombre') || campo('cliente_telefono')) : k === 'pago' ? (campo('pago') || (on('abonos') && campo('abono'))) : campo(k);
+  const obl = k => k === 'domicilio' ? true : k === 'cliente' ? (campo('cliente_nombre') || campo('cliente_telefono')) : k === 'pago' ? (campo('pago') || (on('abonos') && campo('abono'))) : campo(k);
   const sec = (k, titulo, cuerpo, tour) => `<div class="vsec ${falta.includes(k) ? 'falta' : ''}" id="vs-${k}" ${tour ? `data-tour="${tour}"` : ''}>
     <div class="vsec-h"><b>${titulo}</b>${obl(k) ? '<span class="badge warn" style="text-transform:none;letter-spacing:0">Obligatorio</span>' : ''}</div>
     ${falta.includes(k) ? `<div class="small strong" style="color:var(--bad)">${ic('alert', 16, 2.4)} Falta este dato</div>` : ''}${cuerpo}</div>`;
@@ -2315,7 +2318,8 @@ VIEWS.vender = () => {
   S2.push(['pago', sec('pago', '¿Cómo pagó?', `<div class="chips">${['Nequi', 'Efectivo', 'Transferencia', 'Tarjeta'].map(k => `<button type="button" class="chip ${D.pago === k ? 'on' : ''}" data-act="vPago" data-v="${k}">${k}</button>`).join('')}</div>
     ${on('abonos') ? `<div class="chips">${[['todo', 'Pagó todo'], ['abono', 'Dejó un abono']].map(([k, l]) => `<button type="button" class="chip ${D.pagoTipo === k ? 'on' : ''}" data-act="vPagoTipo" data-v="${k}">${l}</button>`).join('')}</div>
     ${D.pagoTipo === 'abono' ? `<div class="field" style="max-width:320px"><label for="vabono">¿Cuánto abonó?</label><input class="inp num" id="vabono" data-in="vabono" inputmode="numeric" value="${D.abono ? money(D.abono) : ''}" placeholder="$0"><span class="xs muted">Te recordamos cobrar el resto en el inicio y en Ventas.</span></div>` : ''}` : ''}`, 'pago')]);
-  if (on('domicilios')) S2.push(['domicilio', sec('domicilio', '¿Cobraste domicilio?', `<div class="row start" style="gap:8px;flex-wrap:wrap"><input class="inp num" id="vdom" data-in="vdom" inputmode="numeric" value="${D.dom ? money(D.dom) : ''}" placeholder="$0 si no cobraste" aria-label="Valor del domicilio" style="max-width:220px">${campo('domicilio') ? `<button type="button" class="chip ${D.dom === 0 ? 'on' : ''}" data-act="vSinDom">No cobré domicilio</button>` : ''}${info('domicilio')}</div><span class="xs muted">El domicilio no paga comisión.</span>`)]);
+  if (on('domicilios')) S2.push(['domicilio', sec('domicilio', '¿Cómo se entregó?', `<div class="chips">${[['tienda', 'home', 'Lo recogió en la tienda'], ['domicilio', 'truck', 'A domicilio']].map(([k, icn, l]) => `<button type="button" class="chip ${D.entrega === k ? 'on' : ''}" data-act="vEnt" data-v="${k}" aria-pressed="${D.entrega === k}">${ic(icn, 18)}${l}</button>`).join('')}</div>
+    ${D.entrega === 'domicilio' ? `<div class="field" style="max-width:360px"><label for="vdom">¿Cuánto cobraste de domicilio?</label><div class="row start" style="gap:8px;flex-wrap:wrap"><input class="inp num" id="vdom" data-in="vdom" inputmode="numeric" value="${D.dom ? money(D.dom) : ''}" placeholder="$0" aria-label="Valor del domicilio" style="max-width:200px"><button type="button" class="chip ${D.dom === 0 ? 'on' : ''}" data-act="vSinDom">Fue gratis</button>${info('domicilio')}</div><span class="xs muted">Lo paga el cliente aparte: no se suma a lo que te queda ni paga comisión.</span></div>` : ''}`)]);
   if (on('equipo') && hacen.length > 1) S2.push(['empleado', sec('empleado', '¿Quién lo hizo?', `<div class="chips">${hacen.map(e => `<button type="button" class="chip ${D.empleadoId === e.id ? 'on' : ''}" data-act="vEmp" data-id="${e.id}" ${ROL() === 'florista' && e.id !== S.rol ? 'disabled' : ''}>${esc(e.nombre)}</button>`).join('')}</div>`, 'quien')]);
   const req = S2.filter(([k]) => obl(k)), opc = S2.filter(([k]) => !obl(k));
   const abierto = D.opc || D.editId || (typeof TOUR !== 'undefined' && TOUR && TOUR.mid === 'venta') || opc.some(([k]) => falta.includes(k));
@@ -2354,8 +2358,12 @@ function footHTML() {
   if (ROL() !== 'duena') return `<div class="col" style="flex:1;gap:0"><span class="small muted">Total</span><b class="num" style="font-size:20px">${money(k.total)}</b></div><button type="button" class="btn btn-p" data-act="vSave">${ic('check', 20, 2.6)}${D.editId ? 'Guardar cambios' : 'Guardar venta'}</button>`;
   const sr = k.its.some(x => sinReceta(prod(x.pid)));
   const lim = k.quedo;
-  const [cls, lab] = sr ? ['warn', 'Falta la receta'] : semaforo(pct(lim, k.total));
-  return `<div class="col" style="flex:1;gap:2px;min-width:0"><span class="small muted">Vendes <b class="num" style="color:var(--ink)">${money(k.total)}</b> y te quedan</span><span class="row start" style="gap:8px;flex-wrap:wrap"><b class="num" style="font-size:20px;color:${lim >= 0 ? 'var(--green-d)' : 'var(--bad)'}">${money(lim)}</b><span class="badge ${cls}">${lab}</span></span>${k.dom ? `<span class="xs muted">Incluye ${money(k.dom)} de domicilio</span>` : ''}</div><button type="button" class="btn btn-p" data-act="vSave">${ic('check', 20, 2.6)}${D.editId ? 'Guardar cambios' : 'Guardar'}</button>`;
+  const prods = k.total - k.dom;
+  const [cls, lab] = sr ? ['warn', 'Falta la receta'] : semaforo(pct(lim, prods));
+  // Lo que se resta, para que se entienda de dónde sale lo que te queda
+  const e = emp(D.empleadoId);
+  const resta = [k.insumos ? `insumos ${money(k.insumos)}` : '', k.mo ? `mano de obra ${money(k.mo)}${e ? ' (' + esc(first(e.nombre)) + ')' : ''}` : '', k.com ? `comisión ${money(k.com)}` : ''].filter(Boolean);
+  return `<div class="col" style="flex:1;gap:2px;min-width:0"><span class="small muted">Vendes <b class="num" style="color:var(--ink)">${money(prods)}</b>${k.dom ? ` + <b class="num" style="color:var(--ink)">${money(k.dom)}</b> de domicilio` : ''} y te quedan</span><span class="row start" style="gap:8px;flex-wrap:wrap"><b class="num" style="font-size:20px;color:${lim >= 0 ? 'var(--green-d)' : 'var(--bad)'}">${money(lim)}</b><span class="badge ${cls}">${lab}</span></span><span class="xs muted">${resta.length ? 'Se restó: ' + resta.join(' · ') : 'No se restó nada'}${sr ? '. Sin receta todavía no se restan los insumos' : ''}</span></div><button type="button" class="btn btn-p" data-act="vSave">${ic('check', 20, 2.6)}${D.editId ? 'Guardar cambios' : 'Guardar'}</button>`;
 }
 function saveVenta() {
   const k = calcVenta(D);
@@ -2384,7 +2392,7 @@ function saveVenta() {
   const fd = D.fecha && D.fecha <= iso(TODAY()) ? D.fecha : iso(TODAY());
   const fecha = old && old.fecha.slice(0, 10) === fd ? old.fecha : fd === iso(TODAY()) ? isoDT(new Date()) : fd + 'T12:00';
   const abono = on('abonos') && D.pagoTipo === 'abono' ? Math.min(num(D.abono), k.total) : k.total;
-  const v = { id: old ? old.id : uid(), fecha, domicilio: k.dom, abono, saldo: k.total - abono, items: k.its.map(({ mo, ...x }) => x), clienteId: c ? c.id : null, personaId: perId, empleadoId: D.empleadoId, origen: D.origen, parte: k.parte, pago: D.pago, total: k.total, insumos: k.insumos, manoObra: k.mo, comision: k.com, quedo: k.quedo, recuperada, sinReceta: k.its.some(x => sinReceta(prod(x.pid))) };
+  const v = { id: old ? old.id : uid(), fecha, domicilio: k.dom, entrega: on('domicilios') ? (D.entrega || null) : null, abono, saldo: k.total - abono, items: k.its.map(({ mo, ...x }) => x), clienteId: c ? c.id : null, personaId: perId, empleadoId: D.empleadoId, origen: D.origen, parte: k.parte, pago: D.pago, total: k.total, insumos: k.insumos, manoObra: k.mo, comision: k.com, quedo: k.quedo, recuperada, sinReceta: k.its.some(x => sinReceta(prod(x.pid))) };
   marca(old ? `Corregiste una venta de ${money(v.total)}` : `Registraste una venta de ${money(v.total)}${fd !== iso(TODAY()) ? ' del ' + fCorta(parseD(fd)) : ''}`);
   if (old) S.ventas[S.ventas.indexOf(old)] = v; else S.ventas.push(v);
   S.ventas.sort((x, y) => x.fecha < y.fecha ? -1 : x.fecha > y.fecha ? 1 : 0);
@@ -2850,6 +2858,7 @@ VIEWS['como-voy'] = () => {
   const vsTxt = (x, y) => { const c = cambio(x, y); return c ? c + ' vs ' + prevTxt : ''; };
   const kpis = [
     kpi('Venta promedio', money(prom), vsTxt(prom, pprom), 'promedio'),
+    on('domicilios') ? kpi('A domicilio', `${r.nDom} de ${vs.length}`, vs.length ? `${pct(r.nDom, vs.length)}% a domicilio · ${r.nTienda} en la tienda` : 'Sin ventas', 'entregas') : '',
     on('comision') ? kpi('Llegaron por Google', `${goo} de ${vs.length}`, vs.length ? `${pct(goo, vs.length)}% de tus ventas` : 'Sin ventas', 'porGoogle') : '',
     on('clientes') ? kpi('Clientes nuevos', String(nuevos), vsTxt(nuevos, pnuevos) || 'En estos días') : '',
     on('abonos') ? kpi('Por cobrar', money(debeTot), debe.length ? `${debe.length} venta${debe.length > 1 ? 's' : ''} con saldo` : 'Nadie te debe', 'porCobrar') : ''
@@ -2861,6 +2870,7 @@ VIEWS['como-voy'] = () => {
     <div class="row" style="flex-wrap:wrap"><span class="lab">Vendiste</span><span class="row start" style="gap:6px"><span class="badge" style="background:#DCE7FB;color:#0F1C2E">${vs.length} venta${vs.length === 1 ? '' : 's'}</span>${cambio(r.ventas, pr.ventas)}</span></div>
     <div class="num" style="font-size:30px;font-weight:800">${money(r.ventas)}</div>
     ${pr.ventas ? `<div class="lab" style="margin-top:2px">${prevTxtM}: ${money(pr.ventas)}</div>` : ''}
+    ${r.dom ? `<div class="lab" style="margin-top:2px">Aparte cobraste ${money(r.dom)} de domicilios, que no se cuentan como tuyos.</div>` : ''}
     <div style="height:1px;background:#1D4ED8;margin:12px 0"></div>
     <div class="row" style="flex-wrap:wrap"><span class="row start" style="gap:8px;font-weight:700">Te quedaron ${info('quedoMes')}</span>${pr.ventas ? `<span class="badge" style="background:#DCE7FB;color:#0F1C2E">${ch >= 0 ? '+' : ''}${ch}% vs ${prevTxt}</span>` : ''}</div>
     <div class="big num">${money(r.quedo)}</div>
@@ -4097,7 +4107,8 @@ const ACT = {
   ...INV_ACT,
   ...CLAVE_ACT,
   ...AUD_ACT,
-  vSinDom: () => { D.dom = 0; render(); }
+  vSinDom: () => { D.dom = 0; render(); },
+  vEnt: (el, id, v) => { D.entrega = v; if (v === 'tienda') D.dom = 0; else if (!D.dom) D.dom = null; render(); if (v === 'domicilio') { const e = document.getElementById('vdom'); if (e) e.focus(); } }
 };
 function copyText(t) {
   try { navigator.clipboard.writeText(t).then(() => toast('Copiado'), () => toast('No se pudo copiar. Selecciona el texto y cópialo.')); }
