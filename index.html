@@ -3469,7 +3469,7 @@ function showInfo(btn, key) {
    Inventario por lotes: las ventas gastan primero lo más viejo
    (el cálculo lo hace la base de datos; aquí se muestra y se cuenta)
    ========================================================= */
-let INV = null, INVCARGA = false, INVC = { vals: {} }, INVD = { iid: '', cant: '', nota: '' };
+let INV = null, INVCARGA = false, INVC = { vals: {}, nuevos: [], q: '', f: null }, INVD = { iid: '', cant: '', nota: '' };
 const fmtC = n => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-CO');
 const numC = v => { const n = parseFloat(String(v == null ? '' : v).replace(/\s/g, '').replace(',', '.')); return isNaN(n) ? null : n; };
 async function cargarInv() {
@@ -3541,16 +3541,51 @@ VIEWS.inventario = () => {
     <p class="small" style="line-height:1.6">${sinContar.map(i => esc(i.nombre)).join(' · ')}</p></details>`;
 };
 
+const INVN_VACIO = () => ({ nombre: '', cant: '', unidad: 'unidades', costo: '', modo: 'uno' });
+// Guarda lo escrito en el conteo antes de volver a dibujar
+function invLeerNuevo() {
+  const g = id => { const el = document.getElementById(id); return el ? el.value : null; };
+  const q = g('invQ'); if (q !== null) INVC.q = q;
+  if (!INVC.f) return;
+  const n = g('invNn'), c = g('invNc'), u = g('invNu'), k = g('invNk');
+  if (n !== null) INVC.f.nombre = n; if (c !== null) INVC.f.cant = c; if (u !== null) INVC.f.unidad = u; if (k !== null) INVC.f.costo = k;
+}
 function invConteoSheet() {
-  const seg = invSeguidos(), inicial = !seg.size;
+  const seg = invSeguidos(), inicial = !seg.size, q = sinTilde((INVC.q || '').trim());
   const L = [...S.insumos].sort((a, b) => (seg.has(b.id) - seg.has(a.id)) || (usosInsumo(b.id) - usosInsumo(a.id)) || a.nombre.localeCompare(b.nombre));
-  return `<div class="sheet-h"><h3>${inicial ? 'Conteo inicial' : 'Contar de nuevo'}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
-  <p class="small muted" style="margin:0;line-height:1.5">${inicial ? 'Escribe cuántas tienes hoy de cada cosa. Lo que dejes vacío no se cuenta. En «Te costó» va lo que pagaste por cada una; si lo dejas vacío usamos el precio que aparece.' : 'Escribe solo lo que no cuadre: cuántas hay de verdad hoy. Lo que dejes vacío queda como está.'}</p>
-  <input class="inp" id="invQ" data-in="invq" placeholder="Buscar: rosa, papel, caja…" autocomplete="off">
-  <div class="card" style="padding:4px 12px">${L.map(i => { const v = INVC.vals[i.id] || {}; const s = seg.has(i.id);
-    return `<div class="inv-row" data-nom="${esc(sinTilde(i.nombre))}" style="display:flex;flex-direction:column;gap:6px;padding:12px 4px;border-bottom:1px solid var(--line)"><span><b style="font-size:15.5px">${esc(i.nombre)}</b> <span class="xs muted">(${esc(i.unidad)})${s ? ` · hoy hay ${fmtC(invHay(i.id))}` : ''}</span></span>
+  const ve = nom => !q || sinTilde(nom).includes(q);
+  const hayLista = L.length > 0, N = INVC.nuevos || [], f = INVC.f;
+  const filas = L.map(i => { const v = INVC.vals[i.id] || {}; const s = seg.has(i.id);
+    return `<div class="inv-row" data-nom="${esc(sinTilde(i.nombre))}" style="display:${ve(i.nombre) ? 'flex' : 'none'};flex-direction:column;gap:6px;padding:12px 4px;border-bottom:1px solid var(--line)"><span><b style="font-size:15.5px">${esc(i.nombre)}</b> <span class="xs muted">(${esc(i.unidad)})${s ? ` · hoy hay ${fmtC(invHay(i.id))}` : ''}</span></span>
       <div class="row start" style="gap:10px;flex-wrap:wrap"><label class="col xs strong" style="gap:4px">¿Cuántas hay?<input class="inp num" style="width:120px" inputmode="decimal" data-in="invc" data-id="${i.id}" data-k="cant" value="${esc(v.cant || '')}" placeholder="${s ? fmtC(invHay(i.id)) : 'Ej: 10'}"></label>
-      ${s ? '' : `<label class="col xs strong" style="gap:4px">Te costó cada una<input class="inp num" style="width:130px" inputmode="numeric" data-in="invc" data-id="${i.id}" data-k="costo" value="${esc(v.costo || '')}" placeholder="${money(i.precio)}"></label>`}</div></div>`; }).join('')}</div>
+      ${s ? '' : `<label class="col xs strong" style="gap:4px">Te costó cada una<input class="inp num" style="width:130px" inputmode="numeric" data-in="invc" data-id="${i.id}" data-k="costo" value="${esc(v.costo || '')}" placeholder="${money(i.precio)}"></label>`}</div></div>`; }).join('');
+  const hayVisibles = L.some(i => ve(i.nombre));
+  const nada = `<div class="inv-nada" style="display:${q && !hayVisibles ? 'flex' : 'none'};flex-direction:column;gap:8px;padding:14px 4px"><span class="small muted" id="invNadaTx">No tienes «${esc((INVC.q || '').trim())}» en la lista.</span>
+    <button type="button" class="btn btn-l block" data-act="invNuevo">${ic('add', 18, 2.4)}Agregarlo al conteo</button></div>`;
+  const listaNuevos = N.length ? `<div class="card" style="padding:6px 16px">
+    <div class="row" style="padding:10px 0 4px"><b style="font-size:16px">Lo nuevo que vas a contar</b><span class="badge neu">${N.length}</span></div>
+    ${N.map((x, k) => `<div class="list-item"><span class="col" style="flex:1;gap:2px"><b style="font-size:15.5px">${esc(x.nombre)}</b><span class="small muted num">${fmtC(x.cant)} ${esc(x.unidad)} · ${money(x.costo)} cada uno</span></span><button type="button" class="btn btn-l xs" data-act="invNuevoQuitar" data-id="${k}" aria-label="Quitar ${esc(x.nombre)}">${ic('trash', 16)}Quitar</button></div>`).join('')}</div>` : '';
+  const cu = f ? arCostoUnit(f) : 0, fc = f ? numC(f.cant) : null;
+  const form = f ? `<div class="card" id="invForm" style="display:flex;flex-direction:column;gap:10px;border:2px solid var(--line2)">
+    <b style="font-size:16px">${hayLista || N.length ? 'Agregar algo que no está en la lista' : 'Agrega lo primero que tienes'}</b>
+    <div class="field"><label for="invNn">¿Qué es?</label><input class="inp" id="invNn" value="${esc(f.nombre)}" placeholder="Ej: rosas rojas, papel, cajas" autocomplete="off"></div>
+    <div class="fgrid"><div class="field"><label for="invNc">¿Cuántos tienes?</label><input class="inp num" id="invNc" inputmode="decimal" value="${esc(f.cant)}" placeholder="0"></div>
+    <div class="field"><label for="invNu">¿En qué lo cuentas?</label><select class="inp" id="invNu">${AR_UNID.map(u => `<option ${f.unidad === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>
+    <div class="field"><label for="invNk">¿Cuánto te costó?</label><input class="inp num" id="invNk" data-in="money" inputmode="numeric" value="${f.costo ? money(num(f.costo)) : ''}" placeholder="$0">
+      <div class="chips">${[['uno', 'Cada uno'], ['todo', 'Todo junto']].map(([k, l]) => `<button type="button" class="chip xs-chip ${f.modo === k ? 'on' : ''}" data-act="invNModo" data-v="${k}" aria-pressed="${f.modo === k}">${l}</button>`).join('')}</div>
+      ${f.modo === 'todo' && cu && fc ? `<span class="xs muted">Sale a <b class="num">${money(cu)}</b> cada uno.</span>` : ''}</div>
+    <button type="button" class="btn btn-l block" data-act="invNuevoOk">${ic('add', 20, 2.6)}Agregar al conteo</button>
+    ${hayLista || N.length ? '<button type="button" class="linkbtn" data-act="invNuevoCancel">Cerrar este cuadro</button>' : ''}</div>`
+    : `<button type="button" class="vmas" data-act="invNuevo"><span>${ic('add', 18, 2.4)} Agregar algo que no está en la lista</span></button>`;
+  const ayuda = !hayLista ? 'Anota lo que tienes hoy con el nombre que tú le dices, cuántos hay y lo que te costó, y toca «Agregar al conteo». Cuando termines, toca «Guardar conteo».'
+    : inicial ? 'Escribe cuántas tienes hoy de cada cosa. Lo que dejes vacío no se cuenta. En «Te costó» va lo que pagaste por cada una; si lo dejas vacío usamos el precio que aparece. Si algo no está, agrégalo abajo.'
+    : 'Escribe solo lo que no cuadre: cuántas hay de verdad hoy. Lo que dejes vacío queda como está.';
+  return `<div class="sheet-h"><h3>${inicial ? 'Conteo inicial' : 'Contar de nuevo'}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
+  <p class="small muted" style="margin:0;line-height:1.5">${ayuda}</p>
+  ${hayLista ? `<input class="inp" id="invQ" data-in="invq" value="${esc(INVC.q || '')}" placeholder="Buscar: rosa, papel, caja…" autocomplete="off">
+  <div class="card" style="padding:4px 12px">${filas}${nada}</div>` : ''}
+  ${listaNuevos}
+  ${form}
   <button type="button" class="btn btn-p block" data-act="invContarOk" id="invBtn">${ic('check', 20, 2.6)}Guardar conteo</button>`;
 }
 function invDanoSheet() {
@@ -3567,18 +3602,61 @@ function invDanoSheet() {
 }
 const INV_INP = {
   invc: el => { const v = INVC.vals[el.dataset.id] = INVC.vals[el.dataset.id] || {}; v[el.dataset.k] = el.value; },
-  invq: el => { const q = sinTilde(el.value.trim()); document.querySelectorAll('.inv-row').forEach(r => { r.style.display = !q || r.dataset.nom.includes(q) ? '' : 'none'; }); },
+  invq: el => { INVC.q = el.value; const q = sinTilde(el.value.trim()); let vis = 0; document.querySelectorAll('.inv-row').forEach(r => { const ok = !q || r.dataset.nom.includes(q); r.style.display = ok ? 'flex' : 'none'; if (ok) vis++; });
+    const nd = document.querySelector('.inv-nada'); if (nd) nd.style.display = q && !vis ? 'flex' : 'none'; const tx = document.getElementById('invNadaTx'); if (tx) tx.textContent = `No tienes «${el.value.trim()}» en la lista.`; },
   invd: el => { INVD[el.dataset.k] = el.value; if (el.dataset.k === 'iid') drawSheet(); }
 };
 const INV_ACT = {
-  invContar: () => { INVC = { vals: {} }; openSheet(invConteoSheet); },
+  invContar: () => { INVC = { vals: {}, nuevos: [], q: '', f: S.insumos.length ? null : INVN_VACIO() }; openSheet(invConteoSheet); },
+  invNuevo: () => {
+    invLeerNuevo(); INVC.f = INVC.f || INVN_VACIO();
+    const q = (INVC.q || '').trim(); if (q && !INVC.f.nombre.trim()) { INVC.f.nombre = q; INVC.q = ''; }
+    drawSheet(); const e = document.getElementById(INVC.f.nombre ? 'invNc' : 'invNn'); if (e) { e.scrollIntoView({ block: 'center' }); e.focus(); }
+  },
+  invNModo: (el, id, v) => { invLeerNuevo(); if (INVC.f) INVC.f.modo = v; drawSheet(); },
+  invNuevoCancel: () => { invLeerNuevo(); INVC.f = null; drawSheet(); },
+  invNuevoQuitar: (el, id) => { invLeerNuevo(); const x = INVC.nuevos.splice(Number(id), 1)[0]; drawSheet(); if (x) toast(`Quitaste «${x.nombre}»`); },
+  invNuevoOk: () => {
+    invLeerNuevo(); const f = INVC.f; if (!f) return true;
+    const foco = id => { const e = document.getElementById(id); if (e) { e.scrollIntoView({ block: 'center' }); e.focus(); } };
+    const n = f.nombre.trim().replace(/\s+/g, ' ');
+    if (!n) { toast('Escribe qué es'); foco('invNn'); return false; }
+    const c = numC(f.cant);
+    if (c == null || c < 0) { toast(`Escribe cuántos tienes de «${n}»`); foco('invNc'); return false; }
+    const cu = arCostoUnit(f);
+    if (!cu) { toast(`Escribe cuánto te costó «${n}»`); foco('invNk'); return false; }
+    const nom = n.charAt(0).toUpperCase() + n.slice(1);
+    const o = S.insumos.find(i => sinTilde(i.nombre) === sinTilde(nom));
+    if (o) {
+      // Ya estaba en la lista: se pone ahí
+      const v = INVC.vals[o.id] = INVC.vals[o.id] || {}; v.cant = String(c); if (!invSeguidos().has(o.id)) v.costo = String(cu);
+      toast(`«${o.nombre}» ya estaba en la lista, le pusimos ${fmtC(c)}`);
+    } else {
+      const y = INVC.nuevos.find(x => sinTilde(x.nombre) === sinTilde(nom));
+      if (y) { y.cant += c; y.costo = cu; } else INVC.nuevos.push({ nombre: nom, cant: c, unidad: f.unidad, costo: cu });
+      toast(`Agregaste «${nom}». Si tienes otra cosa, agrégala igual`);
+    }
+    INVC.f = INVN_VACIO(); drawSheet(); foco('invNn');
+    return true;
+  },
   invDano: () => { INVD = { iid: INVD.iid, cant: '', nota: '' }; openSheet(invDanoSheet); },
   invContarOk: async () => {
+    invLeerNuevo();
+    // Si dejó algo escrito en el cuadro sin agregarlo, se agrega solo
+    const f = INVC.f; if (f && (f.nombre.trim() || String(f.cant).trim() || num(f.costo))) { if (!INV_ACT.invNuevoOk()) return; }
     const seg = invSeguidos();
     const items = Object.entries(INVC.vals).map(([iid, v]) => ({ iid, cant: numC(v.cant), costo: v.costo ? num(v.costo) : null })).filter(x => x.cant != null && x.cant >= 0);
-    if (!items.length) return toast('Escribe cuántas hay de al menos una cosa');
+    if (!items.length && !INVC.nuevos.length) return toast(S.insumos.length ? 'Escribe cuántas hay de al menos una cosa' : 'Anota al menos una cosa y toca «Agregar al conteo»');
     const b = document.getElementById('invBtn'); if (b) b.disabled = true;
-    if (syncPend) await sincronizar();
+    // Lo nuevo se crea como insumo con el nombre que le dice la dueña
+    const nuevos = INVC.nuevos.map(x => {
+      let o = S.insumos.find(i => sinTilde(i.nombre) === sinTilde(x.nombre));
+      if (!o) { o = { id: 'i' + uid(), nombre: x.nombre, unidad: arUnidadDB(x.unidad), precio: x.costo, prev: x.costo, cambio: null, estimado: false }; S.insumos.push(o); }
+      return { iid: o.id, cant: x.cant, costo: x.costo };
+    });
+    nuevos.forEach(n => { const p = items.find(i => i.iid === n.iid); if (p) { p.cant += n.cant; p.costo = n.costo; } else items.push(n); });
+    if (nuevos.length) { save(); try { await sincronizar(); } catch (e) { } }
+    else if (syncPend) await sincronizar();
     const { data, error } = await sb.rpc('inventario_contar', { p_negocio: SES.negocio.id, p_items: items.map(x => x.costo ? x : { iid: x.iid, cant: x.cant }) });
     if (error) { if (b) b.disabled = false; return toast('No se pudo guardar el conteo: ' + errTxt(error)); }
     // Si en el conteo inicial escribió lo que le costó, ese es ahora su precio
