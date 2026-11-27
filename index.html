@@ -3505,7 +3505,7 @@ function showInfo(btn, key) {
    Inventario por lotes: las ventas gastan primero lo más viejo
    (el cálculo lo hace la base de datos; aquí se muestra y se cuenta)
    ========================================================= */
-let INV = null, INVCARGA = false, INVC = { vals: {}, nuevos: [], q: '', f: null }, INVD = { iid: '', cant: '', nota: '' };
+let INV = null, INVCARGA = false, INVC = { vals: {}, nuevos: [], q: '', f: null }, INVD = { iid: '', cant: '', nota: '' }, INVA = null, INVDES = null;
 const fmtC = n => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-CO');
 const numC = v => { const n = parseFloat(String(v == null ? '' : v).replace(/\s/g, '').replace(',', '.')); return isNaN(n) ? null : n; };
 async function cargarInv() {
@@ -3517,9 +3517,9 @@ async function cargarInv() {
       todas('consumos', q => q.eq('tipo', 'faltante').gte('fecha', desde)),
       todas('movimientos', q => q.gte('creado', desde).order('creado', { ascending: false }))]);
     INV = {
-      lotes: lo.map(l => ({ id: l.id, iid: l.insumo_id, fecha: fechaApp(l.fecha), creado: l.creado, ini: nn(l.cantidad_inicial), cant: nn(l.cantidad), costo: nn(l.costo), origen: l.origen })),
+      lotes: lo.map(l => ({ id: l.id, iid: l.insumo_id, fecha: fechaApp(l.fecha), creado: l.creado, ini: nn(l.cantidad_inicial), cant: nn(l.cantidad), costo: nn(l.costo), origen: l.origen, compra: l.compra_id || null })),
       faltas: fa.map(c => ({ iid: c.insumo_id, cant: nn(c.cantidad), fecha: c.fecha })),
-      movs: mv.map(m => ({ tipo: m.tipo, iid: m.insumo_id, nombre: m.insumo_nombre, unidad: m.unidad, cant: nn(m.cantidad), costo: nn(m.costo_total), nota: m.nota || '', fecha: fechaApp(m.fecha), quien: m.creado_por }))
+      movs: mv.map(m => ({ id: m.id, tipo: m.tipo, iid: m.insumo_id, nombre: m.insumo_nombre, unidad: m.unidad, cant: nn(m.cantidad), costo: nn(m.costo_total), nota: m.nota || '', fecha: fechaApp(m.fecha), quien: m.creado_por }))
     };
   } catch (e) { INV = { error: errTxt(e) }; }
   INVCARGA = false; if (route() === 'inventario' && !sheetFn) render();
@@ -3535,6 +3535,7 @@ function movTxt(m) {
   const u = m.unidad ? ' ' + m.unidad : '';
   if (m.tipo === 'dano') return `Se dañaron ${fmtC(-m.cant)} de ${m.nombre}${m.costo ? ' · ' + money(m.costo) : ''}${m.nota ? ' · ' + m.nota : ''}`;
   if (m.tipo === 'inicial') return `Conteo de ${m.nombre}: ${fmtC(m.cant)}${u}`;
+  if (m.tipo === 'arreglo') return `Corregiste ${m.nombre}${m.nota ? ': ' + m.nota : ''}`;
   return `Corrección de ${m.nombre}: ${m.cant > 0 ? '+' : ''}${fmtC(m.cant)}${u}`;
 }
 
@@ -3554,7 +3555,7 @@ VIEWS.inventario = () => {
     .sort((a, b) => (b.falta > 0) - (a.falta > 0) || a.i.nombre.localeCompare(b.i.nombre));
   const valor = INV.lotes.reduce((s, l) => s + l.cant * l.costo, 0);
   const T = TODAY(), ma = iso(new Date(T.getFullYear(), T.getMonth(), 1));
-  const perdidas = INV.movs.filter(m => m.fecha >= ma && m.cant < 0).reduce((s, m) => s + m.costo, 0);
+  const perdidas = INV.movs.filter(m => m.fecha >= ma && m.cant < 0 && m.tipo !== 'arreglo').reduce((s, m) => s + m.costo, 0);
   const faltan = ins.filter(x => x.falta > 0);
   const sinContar = S.insumos.filter(i => !seg.has(i.id)).sort((a, b) => usosInsumo(b.id) - usosInsumo(a.id));
   return cab + `
@@ -3567,11 +3568,16 @@ VIEWS.inventario = () => {
   ${on('compras') ? `<a class="btn btn-l block" href="#compras">${ic('cart', 18)}Anotar una compra (entra sola al inventario)</a>` : ''}
   ${faltan.length ? `<div class="alert" style="border:2px solid #E8B4AE"><div class="ic bad">${ic('alert')}</div><div class="tx"><b>Vendiste más de lo que tenías anotado</b><span class="muted">${faltan.map(x => `${esc(x.i.nombre)} (faltan ${fmtC(x.falta)})`).join(', ')}. Anota la compra que hiciste o cuenta de nuevo.</span></div></div>` : ''}
   <div class="sect">Lo que tienes</div>
-  <div class="card" style="padding:4px 16px">${ins.map(x => `<div class="list-item" style="flex-wrap:wrap;gap:8px"><span class="col" style="flex:1;min-width:190px;gap:2px"><b style="font-size:15.5px">${esc(x.i.nombre)}</b>
+  <p class="small muted" style="margin:-4px 0 8px;line-height:1.5">¿Anotaste mal la cantidad o el precio? Toca el insumo y corrígelo.</p>
+  <div class="card" style="padding:4px 16px">${ins.map(x => `<div class="list-item inv-tocar" role="button" tabindex="0" data-act="invArreglar" data-id="${x.i.id}" style="flex-wrap:wrap;gap:8px;cursor:pointer"><span class="col" style="flex:1;min-width:190px;gap:2px"><b style="font-size:15.5px">${esc(x.i.nombre)} <span class="xs" style="color:var(--green);font-weight:600;white-space:nowrap">${ic('edit', 13)} Corregir</span></b>
       <span class="small muted" style="line-height:1.4">${x.lotes.length ? x.lotes.map((l, k) => `${fmtC(l.cant)} a ${money(l.costo)}${k === 0 && x.lotes.length > 1 ? ' (se usan primero)' : ''}`).join(' · ') : 'Se acabó'}</span></span>
       <span class="col" style="align-items:flex-end;gap:2px"><b class="num" style="font-size:20px;color:${x.hay ? 'inherit' : 'var(--bad)'}">${fmtC(x.hay)}</b><span class="xs muted">${esc(x.i.unidad)}</span></span>
       ${x.falta > 0 ? `<span class="badge bad" style="width:100%;justify-content:center">Faltan ${fmtC(x.falta)}: anota la compra o cuenta de nuevo</span>` : ''}</div>`).join('')}</div>
-  ${INV.movs.length ? `<div class="sect">Lo último que pasó</div><div class="card" style="padding:4px 16px">${INV.movs.slice(0, 8).map(m => `<div class="list-item"><span class="col" style="flex:1;gap:2px"><b style="font-size:14.5px">${esc(movTxt(m))}</b><span class="xs muted">${fLarga(parseD(m.fecha))} · ${esc(nombreDe(m.quien))}</span></span></div>`).join('')}</div>` : ''}
+  ${INV.movs.length ? `<div class="sect">Lo último que pasó</div><div class="card" style="padding:4px 16px">${INV.movs.slice(0, 8).map(m => { const des = m.id && (m.tipo === 'dano' || (m.tipo === 'ajuste' && m.cant < 0));
+      return `<div class="list-item" style="flex-wrap:wrap;gap:8px"><span class="col" style="flex:1;min-width:190px;gap:2px"><b style="font-size:14.5px">${esc(movTxt(m))}</b><span class="xs muted">${fLarga(parseD(m.fecha))} · ${esc(nombreDe(m.quien))}</span></span>
+      ${!des ? '' : INVDES === m.id ? `<span class="col" style="width:100%;gap:8px;background:var(--warn-bg);border-radius:12px;padding:10px 12px"><span class="small strong">¿Deshacer esto? Vuelven ${fmtC(-m.cant)} de ${esc(m.nombre)} al inventario${m.tipo === 'dano' ? ' y deja de contar como pérdida' : ''}.</span>
+        <span class="row" style="gap:8px"><button type="button" class="btn btn-p sm" data-act="invDeshacerOk" data-id="${m.id}">Sí, deshacer</button><button type="button" class="btn btn-l sm" data-act="invDeshacerNo">No</button></span></span>`
+      : `<button type="button" class="btn btn-l sm" data-act="invDeshacer" data-id="${m.id}">Deshacer</button>`}</div>`; }).join('')}</div>` : ''}
   <details class="card"><summary class="strong" style="cursor:pointer">Insumos que no cuentas (${sinContar.length})</summary>
     <p class="small muted" style="line-height:1.5">Estos se calculan con su precio de compra, sin inventario. Si quieres controlar alguno, inclúyelo en «Contar de nuevo».</p>
     <p class="small" style="line-height:1.6">${sinContar.map(i => esc(i.nombre)).join(' · ')}</p></details>`;
@@ -3636,14 +3642,35 @@ function invDanoSheet() {
   <div class="field"><label for="idN">Nota (opcional)</label><input class="inp" id="idN" data-in="invd" data-k="nota" value="${esc(INVD.nota)}" placeholder="Ej: se marchitaron"></div>
   <button type="button" class="btn btn-p block" data-act="invDanoOk" id="invBtn">${ic('check', 20, 2.6)}Guardar</button>`;
 }
+// Corregir lo que se anotó mal (cantidad o precio) sin que cuente como pérdida
+const ORIGEN_TXT = { inicial: 'Conteo', ajuste: 'Lo que sobró al contar', compra: 'Compra' };
+function invArreglarSheet() {
+  const i = insumo(INVA.iid); if (!i) return '';
+  const hace = new Date(Date.now() - 45 * 864e5).toISOString();
+  const L = INV.lotes.filter(l => l.iid === i.id && (l.cant > 0 || l.creado >= hace)).sort((a, b) => a.creado < b.creado ? 1 : -1).slice(0, 6);
+  const tarj = L.map(l => { const v = INVA.vals[l.id] || (INVA.vals[l.id] = { cant: String(l.ini).replace('.', ','), costo: String(Math.round(l.costo)) });
+    const ventaComp = l.compra && !(S.compras || []).some(c => c.id === l.compra);
+    return `<div class="card" style="display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);box-shadow:none">
+      <span><b>${ORIGEN_TXT[l.origen] || 'Anotado'} del ${fCorta(parseD(l.fecha))}</b><br><span class="small muted">Anotaste ${fmtC(l.ini)} a ${money(l.costo)} cada una · hoy quedan ${fmtC(l.cant)}</span></span>
+      ${ventaComp ? '<span class="small muted">Esta compra se corrige en la sección Compras.</span>' : `<div class="row start" style="gap:10px;flex-wrap:wrap">
+        <label class="col xs strong" style="gap:4px">¿Cuántas eran?<input class="inp num" style="width:120px" inputmode="decimal" data-in="inva" data-id="${l.id}" data-k="cant" value="${esc(v.cant)}"></label>
+        <label class="col xs strong" style="gap:4px">Costó cada una<input class="inp num" style="width:140px" inputmode="numeric" data-in="inva" data-id="${l.id}" data-k="costo" value="${esc(v.costo)}"></label></div>
+      <button type="button" class="btn btn-p block" data-act="invArreglarOk" data-id="${l.id}" style="min-height:52px">${ic('check', 20, 2.6)}Guardar corrección</button>`}</div>`; }).join('');
+  return `<div class="sheet-h"><h3>Corregir ${esc(i.nombre)}</h3><button type="button" class="x" data-act="close" aria-label="Cerrar">${ic('x')}</button></div>
+  <p class="small muted" style="margin:0;line-height:1.5">Si te equivocaste al anotar, cambia cuántas eran o lo que costó cada una. No cuenta como pérdida, y las ventas que ya usaron de esto quedan con el costo correcto.</p>
+  ${tarj || '<div class="card empty">No hay nada anotado para corregir.</div>'}
+  <div class="small muted" style="line-height:1.5">¿Lo anotado estaba bien, pero hoy hay más o menos porque se gastó o se perdió algo? Usa «Contar de nuevo».</div>
+  <button type="button" class="btn btn-l block" data-act="invContar">${ic('list', 18)}Contar de nuevo</button>`;
+}
 const INV_INP = {
   invc: el => { const v = INVC.vals[el.dataset.id] = INVC.vals[el.dataset.id] || {}; v[el.dataset.k] = el.value; },
   invq: el => { INVC.q = el.value; const q = sinTilde(el.value.trim()); let vis = 0; document.querySelectorAll('.inv-row').forEach(r => { const ok = !q || r.dataset.nom.includes(q); r.style.display = ok ? 'flex' : 'none'; if (ok) vis++; });
     const nd = document.querySelector('.inv-nada'); if (nd) nd.style.display = q && !vis ? 'flex' : 'none'; const tx = document.getElementById('invNadaTx'); if (tx) tx.textContent = `No tienes «${el.value.trim()}» en la lista.`; },
-  invd: el => { INVD[el.dataset.k] = el.value; if (el.dataset.k === 'iid') drawSheet(); }
+  invd: el => { INVD[el.dataset.k] = el.value; if (el.dataset.k === 'iid') drawSheet(); },
+  inva: el => { const v = INVA.vals[el.dataset.id] = INVA.vals[el.dataset.id] || {}; v[el.dataset.k] = el.value; }
 };
 const INV_ACT = {
-  invContar: () => { INVC = { vals: {}, nuevos: [], q: '', f: S.insumos.length ? null : INVN_VACIO() }; openSheet(invConteoSheet); },
+  invContar: () => { INVA = null; INVC = { vals: {}, nuevos: [], q: '', f: S.insumos.length ? null : INVN_VACIO() }; openSheet(invConteoSheet); },
   invNuevo: () => {
     invLeerNuevo(); INVC.f = INVC.f || INVN_VACIO();
     const q = (INVC.q || '').trim(); if (q && !INVC.f.nombre.trim()) { INVC.f.nombre = q; INVC.q = ''; }
@@ -3676,6 +3703,37 @@ const INV_ACT = {
     return true;
   },
   invDano: () => { INVD = { iid: INVD.iid, cant: '', nota: '' }; openSheet(invDanoSheet); },
+  invArreglar: (el, id) => { if (!INV || !INV.lotes) return; INVA = { iid: id, vals: {} }; openSheet(invArreglarSheet); },
+  invArreglarOk: async (el, id) => {
+    const l = INV.lotes.find(x => x.id === id), v = INVA && INVA.vals[id]; if (!l || !v) return;
+    const cant = numC(v.cant), costo = num(v.costo), i = insumo(l.iid);
+    if (cant == null || cant < 0) return toast('Escribe cuántas eran');
+    if (!String(v.costo).trim() || costo < 0) return toast('Escribe cuánto costó cada una');
+    if (cant === l.ini && costo === Math.round(l.costo)) return toast('No cambiaste nada');
+    el.disabled = true;
+    if (l.compra) { // Viene de una compra: se corrige la compra y el inventario se arregla solo
+      const c = (S.compras || []).find(x => x.id === l.compra); if (!c) { el.disabled = false; return toast('Esta compra se corrige en la sección Compras'); }
+      c.cant = cant; c.total = Math.round(cant * costo); save();
+      try { await sincronizar(); } catch (e) { }
+      if (syncPend) { el.disabled = false; return; }
+    } else {
+      const { error } = await sb.rpc('inventario_corregir_lote', { p_negocio: SES.negocio.id, p_lote: id, p_cant: cant, p_costo: costo });
+      if (error) { el.disabled = false; return toast(/inventario_corregir_lote/.test(error.message || '') && SES.admin ? 'Falta correr el ajuste 16-corregir-inventario.sql en Supabase' : 'No se pudo corregir: ' + errTxt(error)); }
+      // Si el precio del insumo había salido de ese conteo, también cambia aquí
+      if (i && costo !== Math.round(l.costo) && Math.round(i.precio) === Math.round(l.costo)) { i.prev = i.precio; i.precio = costo; i.cambio = iso(TODAY()); i.estimado = false; if (SNAP.insumos) SNAP.insumos.set(i.id, JSON.stringify(MAP.insumos.d(i))); }
+    }
+    closeSheet(); await cargarInv(); render();
+    toast(INV && INV.lotes ? `Listo, corregido. Ahora tienes ${fmtC(invHay(l.iid))}${i ? ' de ' + i.nombre : ''}` : 'Listo, corregido');
+  },
+  invDeshacer: (el, id) => { INVDES = id; render(); },
+  invDeshacerNo: () => { INVDES = null; render(); },
+  invDeshacerOk: async (el, id) => {
+    el.disabled = true;
+    const { data, error } = await sb.rpc('inventario_deshacer', { p_negocio: SES.negocio.id, p_mov: id });
+    INVDES = null;
+    if (error) { el.disabled = false; render(); return toast(/inventario_deshacer/.test(error.message || '') && SES.admin ? 'Falta correr el ajuste 16-corregir-inventario.sql en Supabase' : 'No se pudo deshacer: ' + errTxt(error)); }
+    await cargarInv(); render(); toast(`Listo, volvieron ${fmtC(data || 0)} al inventario`);
+  },
   invContarOk: async () => {
     invLeerNuevo();
     // Si dejó algo escrito en el cuadro sin agregarlo, se agrega solo
