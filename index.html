@@ -1571,9 +1571,45 @@ function suscribir() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ventas', filter: f }, p => alCambiarVenta(p))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes', filter: f }, p => alCambiarCliente(p))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'funciones', filter: f }, () => recargarConfig())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campos', filter: f }, () => recargarConfig())
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campos', filter: f }, () => recargarConfig());
+    // Productos, insumos, equipo, gastos y compras: lo que cambie en otro celular aparece solo
+    Object.keys(RT_TABLAS).forEach(t => CANAL.on('postgres_changes', { event: '*', schema: 'public', table: t, filter: f }, p => rtLlega(RT_TABLAS[t], p)));
+    // Inventario: si cambian los lotes (compras, ventas, conteos, daños) se vuelve a traer
+    ['lotes', 'consumos', 'movimientos'].forEach(t => CANAL.on('postgres_changes', { event: '*', schema: 'public', table: t, filter: f }, () => rtLlega('inv')));
+    // Lo que se borra no trae filtro en Supabase: se revisa que sea de este negocio
+    Object.keys(RT_TABLAS).forEach(t => CANAL.on('postgres_changes', { event: 'DELETE', schema: 'public', table: t }, p => { if (p.old && p.old.negocio_id === SES.negocio.id) rtLlega(RT_TABLAS[t], p); }));
+    CANAL.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'ventas' }, p => { if (p.old && p.old.negocio_id === SES.negocio.id) alCambiarVenta(p); });
+    CANAL.subscribe();
   } catch (e) { }
+}
+// Cambios que llegan de otro celular: se juntan y se ponen cuando no hay una ventana abierta ni algo guardándose
+const RT_TABLAS = { insumos: 'insumos', productos: 'productos', empleados: 'empleados', gastos_fijos: 'gastosFijos', compras: 'compras', gastos: 'gastos' };
+let RTQ = [], RTT = null;
+function rtLlega(k, p) { if (CARGANDO) return; RTQ.push([k, p]); clearTimeout(RTT); RTT = setTimeout(rtAplicar, 250); }
+function rtAplicar() {
+  clearTimeout(RTT); RTT = null;
+  if (CARGANDO || !RTQ.length || !S) return;
+  if (sheetFn || syncPend) { RTT = setTimeout(rtAplicar, 1000); return; } // se espera a que cierre la ventana
+  const q = RTQ; RTQ = []; let pintar = false, inv = false;
+  q.forEach(([k, p]) => { if (k === 'inv' || k === 'compras') inv = true; if (k !== 'inv' && rtFila(k, p)) pintar = true; });
+  if (inv && INV !== null) {
+    if (route() === 'inventario') { if (INVCARGA) { RTQ.push(['inv']); RTT = setTimeout(rtAplicar, 1000); } else cargarInv(); }
+    else INV = null;
+  }
+  if (pintar && route() !== 'vender') render();
+}
+function rtFila(k, p) {
+  const m = MAP[k], arr = S[k]; if (!m || !arr) return false;
+  const id = (p.new && p.new.id) || (p.old && p.old.id); if (!id) return false;
+  const i = arr.findIndex(o => o.id === id), snap = SNAP[k] || new Map();
+  if (i >= 0 && snap.get(id) !== JSON.stringify(m.d(arr[i]))) return false; // hay un cambio local sin guardar
+  const sale = p.eventType === 'DELETE' || ((k === 'productos' || k === 'empleados') && p.new && p.new.activo === false);
+  if (sale) { if (i < 0) return false; arr.splice(i, 1); snap.delete(id); return true; }
+  if (!p.new || p.new.negocio_id !== SES.negocio.id) return false;
+  const o = m.a(p.new), j = JSON.stringify(m.d(o));
+  if (i >= 0) { if (k === 'productos') o.cats = arr[i].cats; if (snap.get(id) === j) return false; arr[i] = o; }
+  else arr.push(o);
+  snap.set(id, j); SNAP[k] = snap; return true;
 }
 function alCambiarCliente(p) {
   if (CARGANDO || p.eventType === 'DELETE') return;
