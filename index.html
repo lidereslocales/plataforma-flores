@@ -3527,8 +3527,8 @@ async function cargarInv() {
 const invSeguidos = () => new Set((INV && INV.lotes || []).map(l => l.iid));
 const invLotes = iid => INV.lotes.filter(l => l.iid === iid && l.cant > 0);
 const invHay = iid => invLotes(iid).reduce((s, l) => s + l.cant, 0);
-// Lo que se vendió de más (sin estar anotado) después del último conteo o compra de ese insumo
-const invFalta = iid => { const ult = INV.lotes.filter(l => l.iid === iid).reduce((m, l) => l.creado > m ? l.creado : m, ''); return INV.faltas.filter(f => f.iid === iid && f.fecha > ult).reduce((s, f) => s + f.cant, 0); };
+// Lo que se vendió de más (sin estar anotado) y todavía no se ha descontado: se descuenta solo al anotar la compra, o queda resuelto al contar
+const invFalta = iid => INV.faltas.filter(f => f.iid === iid).reduce((s, f) => s + f.cant, 0);
 const usosInsumo = iid => S.productos.filter(p => p.receta.some(r => r.iid === iid)).length;
 const nombreDe = uid => { const m = (S.miembros || []).find(x => x.user_id === uid); return m ? first(m.nombre) : 'Líderes Locales'; };
 function movTxt(m) {
@@ -3566,13 +3566,13 @@ VIEWS.inventario = () => {
     <button type="button" class="accion fijo" data-act="invContar" style="min-height:120px"><span class="ai">${ic('list', 24, 2.4)}</span><span><b>Contar de nuevo</b><span class="as">Corrige si no cuadra con lo que hay</span></span></button>
   </div>
   ${on('compras') ? `<a class="btn btn-l block" href="#compras">${ic('cart', 18)}Anotar una compra (entra sola al inventario)</a>` : ''}
-  ${faltan.length ? `<div class="alert" style="border:2px solid #E8B4AE"><div class="ic bad">${ic('alert')}</div><div class="tx"><b>Vendiste más de lo que tenías anotado</b><span class="muted">${faltan.map(x => `${esc(x.i.nombre)} (faltan ${fmtC(x.falta)})`).join(', ')}. Anota la compra que hiciste o cuenta de nuevo.</span></div></div>` : ''}
+  ${faltan.length ? `<div class="alert" style="border:2px solid #E8B4AE"><div class="ic bad">${ic('alert')}</div><div class="tx"><b>Vendiste más de lo que tenías anotado</b><span class="muted">${faltan.map(x => `${esc(x.i.nombre)} (faltan ${fmtC(x.falta)})`).join(', ')}. Si se te olvidó anotar una compra, anótala y se descuentan solas. Si no, cuenta de nuevo lo que hay.</span></div></div>` : ''}
   <div class="sect">Lo que tienes</div>
   <p class="small muted" style="margin:-4px 0 8px;line-height:1.5">¿Anotaste mal la cantidad o el precio? Toca el insumo y corrígelo.</p>
   <div class="card" style="padding:4px 16px">${ins.map(x => `<div class="list-item inv-tocar" role="button" tabindex="0" data-act="invArreglar" data-id="${x.i.id}" style="flex-wrap:wrap;gap:8px;cursor:pointer"><span class="col" style="flex:1;min-width:190px;gap:2px"><b style="font-size:15.5px">${esc(x.i.nombre)} <span class="xs" style="color:var(--green);font-weight:600;white-space:nowrap">${ic('edit', 13)} Corregir</span></b>
       <span class="small muted" style="line-height:1.4">${x.lotes.length ? x.lotes.map((l, k) => `${fmtC(l.cant)} a ${money(l.costo)}${k === 0 && x.lotes.length > 1 ? ' (se usan primero)' : ''}`).join(' · ') : 'Se acabó'}</span></span>
       <span class="col" style="align-items:flex-end;gap:2px"><b class="num" style="font-size:20px;color:${x.hay ? 'inherit' : 'var(--bad)'}">${fmtC(x.hay)}</b><span class="xs muted">${esc(x.i.unidad)}</span></span>
-      ${x.falta > 0 ? `<span class="badge bad" style="width:100%;justify-content:center">Faltan ${fmtC(x.falta)}: anota la compra o cuenta de nuevo</span>` : ''}</div>`).join('')}</div>
+      ${x.falta > 0 ? `<span class="badge bad" style="width:100%;justify-content:center">Faltan ${fmtC(x.falta)}: anota la compra y se descuentan solas</span>` : ''}</div>`).join('')}</div>
   ${INV.movs.length ? `<div class="sect">Lo último que pasó</div><div class="card" style="padding:4px 16px">${INV.movs.slice(0, 8).map(m => { const des = m.id && (m.tipo === 'dano' || (m.tipo === 'ajuste' && m.cant < 0));
       return `<div class="list-item" style="flex-wrap:wrap;gap:8px"><span class="col" style="flex:1;min-width:190px;gap:2px"><b style="font-size:14.5px">${esc(movTxt(m))}</b><span class="xs muted">${fLarga(parseD(m.fecha))} · ${esc(nombreDe(m.quien))}</span></span>
       ${!des ? '' : INVDES === m.id ? `<span class="col" style="width:100%;gap:8px;background:var(--warn-bg);border-radius:12px;padding:10px 12px"><span class="small strong">¿Deshacer esto? Vuelven ${fmtC(-m.cant)} de ${esc(m.nombre)} al inventario${m.tipo === 'dano' ? ' y deja de contar como pérdida' : ''}.</span>
